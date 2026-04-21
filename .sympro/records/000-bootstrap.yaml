@@ -1,0 +1,64 @@
+id: record-0000
+timestamp: 2026-04-21T00:00:00Z
+summary: >-
+  Bootstrap CiteBeat v2.0.0: rebrand the Google Scholar citation updater into a
+  dual-source (Google Scholar + Semantic Scholar) Chrome MV3 extension with
+  per-paper delta tracking, popup growth list, logo/icon set, store promo
+  assets, privacy policy, README, and MIT + SymPro 0.1 licensing.
+participation_mode:
+  - design
+  - implementation
+  - documentation
+participation_intensity: substantial
+autonomy_mode: human-directed
+artifacts:
+  - manifest.json
+  - background.js
+  - popup/popup.html
+  - popup/popup.css
+  - popup/popup.js
+  - options/options.html
+  - options/options.js
+  - icons/icon.svg
+  - icons/icon16.png
+  - icons/icon32.png
+  - icons/icon48.png
+  - icons/icon128.png
+  - store/promo.svg
+  - store/promo-1280x800.png
+  - store/promo-small-440x280.png
+  - README.md
+  - PRIVACY.md
+  - LICENSE
+  - .sympro/project.yaml
+  - .sympro/records/000-bootstrap.yaml
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    Human-directed iterative session: rebrand extension to CiteBeat, add
+    Semantic Scholar as a second data source with a max(authorCount,
+    sum(paperCounts)) reconciliation, implement per-paper baseline diffing,
+    design a logo, generate store promo images, write README and privacy
+    policy, and set up SymPro provenance metadata alongside MIT.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - human_review
+    - manual_testing
+  checks:
+    - manifest.json JSON validated
+    - background.js / popup.js / options.js syntax checked with node --check
+    - Semantic Scholar count reconciliation manually verified by maintainer
+      (346 vs 368 case resolved via max strategy)
+    - Extension loaded unpacked in Chrome and popup interactions exercised

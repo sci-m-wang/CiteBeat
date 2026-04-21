@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>CiteBeat — 设置</title>
+  <style>
+    body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           max-width: 620px; margin: 40px auto; padding: 0 20px; color: #1c1c1e; }
+    h1 { display: flex; align-items: center; gap: 10px; margin-top: 0; }
+    h1 img { width: 36px; height: 36px; }
+    .row { display: flex; flex-direction: column; margin-bottom: 14px; }
+    .row label { font-weight: 600; margin-bottom: 4px; }
+    .row input[type=text], .row input[type=number], .row select {
+      padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font: inherit;
+    }
+    .row .hint { color: #666; font-size: 12px; margin-top: 4px; }
+    .radio-group { display: flex; gap: 16px; margin: 4px 0; }
+    .radio-group label { font-weight: 400; display: flex; align-items: center; gap: 6px; }
+    button {
+      background: #1e4fc2; color: #fff; border: none; border-radius: 6px;
+      padding: 8px 16px; font: inherit; cursor: pointer;
+    }
+    button:hover { background: #1642a8; }
+    .status { margin-left: 10px; font-size: 12px; color: #0a7a2f; }
+    .status.err { color: #b00020; }
+    hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+    code { background: #f3f3f3; padding: 1px 5px; border-radius: 3px; }
+    .welcome {
+      background: #fff6d6; border: 1px solid #f0d878; color: #6a4c00;
+      border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 13px;
+      display: none;
+    }
+    .welcome.show { display: block; }
+  </style>
+</head>
+<body>
+  <h1><img src="../icons/icon128.png" alt=""> CiteBeat 设置</h1>
+
+  <div id="welcome" class="welcome">
+    👋 首次使用：请先选择数据来源，并填入对应的作者 ID，然后点"保存"。保存后扩展会自动开始抓取你的公开引用数据。
+  </div>
+
+  <div class="row">
+    <label>引用数据来源</label>
+    <div class="radio-group">
+      <label><input type="radio" name="source" value="scholar"> Google Scholar</label>
+      <label><input type="radio" name="source" value="semanticscholar"> Semantic Scholar</label>
+    </div>
+  </div>
+
+  <div class="row">
+    <label for="scholarId">Google Scholar user id</label>
+    <input id="scholarId" type="text" placeholder="例如 dcqk_mMAAAAJ">
+    <div class="hint">从 <code>scholar.google.com/citations?user=XXX</code> 中的 <code>user=</code> 参数获取。</div>
+  </div>
+
+  <div class="row">
+    <label for="semanticScholarId">Semantic Scholar author id</label>
+    <input id="semanticScholarId" type="text" placeholder="例如 2117567493">
+    <div class="hint">从 <code>semanticscholar.org/author/NAME/ID</code> 链接末尾的数字 ID 获取。</div>
+  </div>
+
+  <div class="row">
+    <label for="periodMinutes">刷新间隔（分钟）</label>
+    <input id="periodMinutes" type="number" min="1" step="1" value="30">
+  </div>
+
+  <hr>
+
+  <div>
+    <button id="save">保存</button>
+    <button id="refresh" style="background:#555">立即刷新</button>
+    <span id="status" class="status"></span>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

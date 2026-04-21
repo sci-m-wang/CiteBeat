@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f8cff"/>
+      <stop offset="1" stop-color="#1e4fc2"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="24" ry="24" fill="url(#bg)"/>
+  <!-- book shape -->
+  <path d="M30 34 Q30 28 36 28 L60 28 Q64 28 64 32 L64 100 Q64 96 60 96 L36 96 Q30 96 30 102 Z" fill="#ffffff" opacity="0.95"/>
+  <path d="M98 34 Q98 28 92 28 L68 28 Q64 28 64 32 L64 100 Q64 96 68 96 L92 96 Q98 96 98 102 Z" fill="#ffffff" opacity="0.95"/>
+  <line x1="64" y1="32" x2="64" y2="96" stroke="#1e4fc2" stroke-width="2"/>
+  <!-- quote marks -->
+  <text x="64" y="76" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="56" fill="#1e4fc2">&#8220;&#8221;</text>
+</svg>

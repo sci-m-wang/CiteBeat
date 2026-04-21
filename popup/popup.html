@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>CiteBeat</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="hdr">
+    <div class="title">
+      <img src="../icons/icon32.png" width="24" height="24" alt="">
+      <span>CiteBeat</span>
+    </div>
+    <div class="actions">
+      <button id="refresh" title="立即刷新">刷新</button>
+      <button id="options" title="设置">设置</button>
+    </div>
+  </header>
+
+  <section class="summary">
+    <div class="total">
+      <div class="label">总引用</div>
+      <div class="value" id="total">—</div>
+    </div>
+    <div class="meta">
+      <div id="sourceTag" class="tag">—</div>
+      <div class="muted" id="updatedAt">尚未更新</div>
+      <div class="muted" id="baselineAt"></div>
+    </div>
+  </section>
+
+  <section class="growth">
+    <div class="growth-hdr">
+      <div>本周期新增引用 <span id="growthTotal" class="badge">0</span></div>
+      <button id="resetBaseline" class="link" title="将当前作为新的基线">重置基线</button>
+    </div>
+    <ul id="growthList" class="list"></ul>
+    <div id="growthEmpty" class="empty">本周期暂无引用增长</div>
+  </section>
+
+  <div id="err" class="err hidden"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

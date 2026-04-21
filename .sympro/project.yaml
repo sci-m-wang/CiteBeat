@@ -1,0 +1,28 @@
+sympro_version: 0.1-draft
+project:
+  name: CiteBeat
+  repository: https://github.com/sci-m-wang/CiteBeat
+  description: >-
+    A Chrome extension (MV3) that tracks citation-count deltas for a scholar's
+    papers across Google Scholar and Semantic Scholar, surfacing per-paper
+    increments since the last baseline.
+steward: KinaMind
+base_licenses:
+  - MIT
+metadata_retention: recommended
+default_review_policy: human-reviewed
+participants:
+  humans:
+    - id: wangm
+      name: Wang M.
+      roles:
+        - Inceptor
+        - Maintainer
+        - Reviewer
+  agents:
+    - id: lumen
+      name: Lumen
+      handle: lumen-coder
+      roles:
+        - Agent Contributor
+        - Drafter
