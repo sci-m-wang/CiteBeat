@@ -1,0 +1,16 @@
+theme: jekyll-theme-minimal
+title: CiteBeat
+description: 听见你引用的节拍 · Chrome 引用追踪扩展
+
+# 仅发布 README 和 PRIVACY 两个页面，忽略其余目录
+exclude:
+  - scripts/
+  - icons/
+  - popup/
+  - options/
+  - background.js
+  - manifest.json
+  - dist/
+  - store/
+  - .sympro/
+  - LICENSE

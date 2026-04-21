@@ -1,3 +1,8 @@
+---
+title: CiteBeat 隐私政策
+permalink: /privacy/
+---
+
 # Privacy Policy — CiteBeat
 
 _Last updated: 2026-04-21_
