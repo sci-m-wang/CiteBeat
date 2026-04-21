@@ -18,6 +18,7 @@ cp background.js    "$OUT_DIR/"
 cp -R icons         "$OUT_DIR/"
 cp -R popup         "$OUT_DIR/"
 cp -R options       "$OUT_DIR/"
+cp -R _locales      "$OUT_DIR/"
 
 # Remove macOS junk if any
 find "$OUT_DIR" -name ".DS_Store" -delete

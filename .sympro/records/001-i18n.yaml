@@ -1,0 +1,42 @@
+id: record-0001
+timestamp: 2026-04-21T23:55:00Z
+summary: >-
+  v0.1.1: Add Chrome i18n scaffolding (`_locales/en` and `_locales/zh_CN`) so
+  the Edge Add-ons listing can expose both English and Simplified Chinese
+  locale slots. manifest.json now references __MSG_extName__ / __MSG_extDesc__
+  / __MSG_actionTitle__ with `default_locale: en`.
+participation_mode:
+  - implementation
+participation_intensity: minor
+autonomy_mode: human-directed
+artifacts:
+  - manifest.json
+  - _locales/en/messages.json
+  - _locales/zh_CN/messages.json
+  - pack.sh
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    Edge Add-ons partner center refused to add Chinese as a listing language
+    because the extension package only declared English. Add a minimal Chrome
+    i18n setup so both locales are detectable, bump to 0.1.1, and rebuild.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - human_review
+    - manual_testing
+  checks:
+    - manifest.json validated
+    - dist/citebeat-0.1.1.zip contains _locales/en and _locales/zh_CN
+    - pack.sh updated to include _locales in the extension bundle

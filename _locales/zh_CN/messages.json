@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "CiteBeat · 引用追踪",
+    "description": "Extension display name."
+  },
+  "extDesc": {
+    "message": "听见你引用的节拍。通过 Google Scholar 或 Semantic Scholar 自动追踪学术论文的引用增长，按论文粒度记录基线。",
+    "description": "Extension short description shown in store and browser."
+  },
+  "actionTitle": {
+    "message": "CiteBeat — 点击查看引用增长",
+    "description": "Tooltip on the toolbar icon."
+  }
+}

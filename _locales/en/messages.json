@@ -1,0 +1,14 @@
+{
+  "extName": {
+    "message": "CiteBeat · Citation Tracker",
+    "description": "Extension display name."
+  },
+  "extDesc": {
+    "message": "Hear the beat of your citations. Automatically track citation growth of your academic papers via Google Scholar or Semantic Scholar, with per-paper baselines.",
+    "description": "Extension short description shown in store and browser."
+  },
+  "actionTitle": {
+    "message": "CiteBeat — click to view citation growth",
+    "description": "Tooltip on the toolbar icon."
+  }
+}
