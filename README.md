@@ -18,10 +18,14 @@
 
 ### 开发者模式加载
 
-1. 克隆或下载本仓库到本地
-2. 打开 `chrome://extensions`，右上角启用"开发者模式"
-3. 点"加载已解压的扩展程序"，选择本仓库目录
-4. 首次安装会自动打开设置页
+1. 克隆本仓库：`git clone https://github.com/sci-m-wang/CiteBeat.git`
+2. 在仓库目录运行 `./pack.sh`（会生成 `dist/unpacked/` 目录）
+3. 打开 `chrome://extensions` 或 `edge://extensions`，启用"开发者模式"
+4. 点"加载已解压的扩展程序"，选择 `dist/unpacked`
+5. 首次安装会自动打开设置页
+
+> 注意：不要直接加载仓库根目录。根目录下的 `_config.yml`（GitHub Pages 用）
+> 以下划线开头，会被 Chromium 视为保留名并拒绝加载。`pack.sh` 会产出干净的扩展目录。
 
 ### 从 Chrome Web Store 安装
 
