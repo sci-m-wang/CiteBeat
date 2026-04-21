@@ -1,7 +1,7 @@
 id: record-0000
 timestamp: 2026-04-21T00:00:00Z
 summary: >-
-  Bootstrap CiteBeat v2.0.0: rebrand the Google Scholar citation updater into a
+  Bootstrap CiteBeat v0.1.0: rebrand the Google Scholar citation updater into a
   dual-source (Google Scholar + Semantic Scholar) Chrome MV3 extension with
   per-paper delta tracking, popup growth list, logo/icon set, store promo
   assets, privacy policy, README, and MIT + SymPro 0.1 licensing.

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "CiteBeat",
   "description": "听见你引用的节拍：定时获取 Google Scholar / Semantic Scholar 总引用数，查看本周期内引用增长的论文。",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "permissions": [
     "alarms",
     "storage"
