@@ -72,11 +72,15 @@ function parseScholarRows(html, papers) {
   let m;
   while ((m = rowRe.exec(html)) !== null) {
     const row = m[1];
-    const titleMatch = row.match(/<a[^>]*class="gsc_a_at"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    // The title <a> carries class="gsc_a_at" and an href to the citation
+    // detail page; attribute order on the tag is not guaranteed, so match
+    // href and class independently and the <a> as a whole separately.
+    const titleAnchor = row.match(/<a\b[^>]*\bclass="gsc_a_at"[^>]*>([\s\S]*?)<\/a>/i);
+    const hrefMatch = titleAnchor && titleAnchor[0].match(/\bhref="([^"]+)"/i);
     const citeMatch = row.match(/<a[^>]*class="gsc_a_ac[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
-    if (!titleMatch) continue;
-    const href = decodeHtml(titleMatch[1]);
-    const title = stripTags(decodeHtml(titleMatch[2])).trim();
+    if (!titleAnchor || !hrefMatch) continue;
+    const href = decodeHtml(hrefMatch[1]);
+    const title = stripTags(decodeHtml(titleAnchor[1])).trim();
     const citeText = citeMatch ? stripTags(decodeHtml(citeMatch[1])).trim() : '';
     const citations = /^\d+$/.test(citeText) ? parseInt(citeText, 10) : 0;
     const idMatch = href.match(/citation_for_view=([^&]+)/);

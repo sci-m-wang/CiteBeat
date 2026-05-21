@@ -1,0 +1,43 @@
+id: record-0004
+timestamp: 2026-04-22T02:00:00Z
+summary: >-
+  v0.1.4 fixes the actual reason no Scholar papers were being parsed:
+  the row-level title regex required class="gsc_a_at" to appear before
+  href="..." inside the anchor tag, but Google Scholar now serves the
+  attributes in the opposite order. Parsing the anchor and its href
+  separately removes the attribute-order dependency and recovers
+  per-paper data.
+participation_mode:
+  - implementation
+  - bugfix
+participation_intensity: minor
+autonomy_mode: human-directed
+artifacts:
+  - background.js
+  - manifest.json
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User pasted live Google Scholar row HTML showing `<a href="..."
+    class="gsc_a_at">` (href before class). The previous regex required
+    class before href and therefore never matched any titles, even
+    though row count and citation count regexes still worked.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - human_review
+    - manual_testing
+  checks:
+    - node --check background.js
+    - regex verified against live Scholar HTML in DevTools console
