@@ -29,17 +29,45 @@ async function getState() {
 
 // ---------- Source: Google Scholar ----------
 async function fetchScholar(userId) {
-  const url = `https://scholar.google.com/citations?user=${encodeURIComponent(userId)}&hl=en&cstart=0&pagesize=100`;
-  const response = await fetch(url, { credentials: 'omit' });
-  if (!response.ok) throw new Error(`Google Scholar HTTP ${response.status}`);
-  const html = await response.text();
+  // Total citations from the first page; papers paginated via cstart.
+  const firstUrl = `https://scholar.google.com/citations?user=${encodeURIComponent(userId)}&hl=en&cstart=0&pagesize=100`;
+  const firstRes = await fetch(firstUrl, { credentials: 'omit' });
+  if (!firstRes.ok) throw new Error(`Google Scholar HTTP ${firstRes.status}`);
+  const firstHtml = await firstRes.text();
 
   // Total citations (first gsc_rsb_std cell = all-time total)
-  const totalMatch = html.match(/<td[^>]*class="gsc_rsb_std"[^>]*>([\d,]+)<\/td>/i);
+  const totalMatch = firstHtml.match(/<td[^>]*class="gsc_rsb_std"[^>]*>([\d,]+)<\/td>/i);
   const total = totalMatch ? totalMatch[1].replace(/,/g, '') : null;
 
-  // Paper rows
   const papers = {};
+  parseScholarRows(firstHtml, papers);
+
+  // Paginate remaining pages while a page returns close to a full window.
+  // Scholar caps pagesize at 100; loop until a page returns < 100 rows.
+  let cstart = 100;
+  const hardCap = 2000;
+  let lastCount = Object.keys(papers).length;
+  while (lastCount >= cstart && cstart < hardCap) {
+    const url = `https://scholar.google.com/citations?user=${encodeURIComponent(userId)}&hl=en&cstart=${cstart}&pagesize=100`;
+    const res = await fetch(url, { credentials: 'omit' });
+    if (!res.ok) break;
+    const html = await res.text();
+    const before = Object.keys(papers).length;
+    parseScholarRows(html, papers);
+    const after = Object.keys(papers).length;
+    if (after === before) break; // no new rows; done
+    cstart += 100;
+    lastCount = after;
+  }
+
+  const fetched = Object.keys(papers).length;
+  const summed = sumCitations(papers);
+  console.log('[Scholar] total=%s, sum(papers)=%s, papers fetched=%s', total, summed, fetched);
+
+  return { total: total ?? String(summed), papers };
+}
+
+function parseScholarRows(html, papers) {
   const rowRe = /<tr[^>]*class="gsc_a_tr"[^>]*>([\s\S]*?)<\/tr>/gi;
   let m;
   while ((m = rowRe.exec(html)) !== null) {
@@ -51,7 +79,6 @@ async function fetchScholar(userId) {
     const title = stripTags(decodeHtml(titleMatch[2])).trim();
     const citeText = citeMatch ? stripTags(decodeHtml(citeMatch[1])).trim() : '';
     const citations = /^\d+$/.test(citeText) ? parseInt(citeText, 10) : 0;
-    // extract citation_for_view id from href to form a stable key
     const idMatch = href.match(/citation_for_view=([^&]+)/);
     const id = idMatch ? idMatch[1] : href;
     papers[id] = {
@@ -61,8 +88,6 @@ async function fetchScholar(userId) {
       url: href.startsWith('http') ? href : `https://scholar.google.com${href}`
     };
   }
-
-  return { total: total ?? String(sumCitations(papers)), papers };
 }
 
 // ---------- Source: Semantic Scholar ----------

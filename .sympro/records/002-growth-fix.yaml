@@ -1,0 +1,47 @@
+id: record-0002
+timestamp: 2026-04-22T00:30:00Z
+summary: >-
+  v0.1.2 fixes "growth list always empty" by (1) paginating Google Scholar
+  beyond the first 100 papers so newly-cited papers outside the first page
+  are included in currentPapers, (2) adding a normalized-title fallback when
+  Scholar rotates citation_for_view ids so per-paper diffs survive id churn,
+  and (3) cross-checking the headline citation count against the baseline
+  sum and surfacing any unattributed delta so users see growth even when
+  no individual paper can be matched.
+participation_mode:
+  - implementation
+  - bugfix
+participation_intensity: moderate
+autonomy_mode: human-directed
+artifacts:
+  - background.js
+  - popup/popup.js
+  - manifest.json
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User reported that after running v0.1.1 for ~1 month the popup never
+    showed any per-paper growth even though total citations were known to
+    have increased. Root cause hypothesised as Google Scholar returning only
+    the first 100 rows by default (papers beyond the first page missing
+    from currentPapers) combined with citation_for_view id rotation.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - human_review
+    - manual_testing
+  checks:
+    - node --check background.js
+    - node --check popup/popup.js
+    - dist/citebeat-0.1.2.zip rebuilt via pack.sh

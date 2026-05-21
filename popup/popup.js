@@ -8,12 +8,29 @@ function fmtTime(ts) {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function normTitle(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '').slice(0, 80);
+}
+
+function buildTitleIndex(papers) {
+  const idx = {};
+  for (const id of Object.keys(papers || {})) {
+    const key = normTitle(papers[id].title);
+    if (key) idx[key] = papers[id];
+  }
+  return idx;
+}
+
 function computeGrowth(current, baseline) {
   const rows = [];
   if (!baseline) return rows;
+  const baseByTitle = buildTitleIndex(baseline);
   for (const id of Object.keys(current)) {
     const cur = current[id];
-    const base = baseline[id];
+    // Match by id first, fall back to normalized title (Scholar sometimes
+    // rotates citation_for_view ids or merges/splits paper entries).
+    let base = baseline[id];
+    if (!base) base = baseByTitle[normTitle(cur.title)];
     const baseC = base ? (base.citations || 0) : 0;
     const delta = (cur.citations || 0) - baseC;
     if (delta > 0) {
@@ -64,9 +81,28 @@ async function render() {
   const list = $('growthList');
   list.innerHTML = '';
   const totalDelta = rows.reduce((a, r) => a + r.delta, 0);
-  $('growthTotal').textContent = '+' + totalDelta;
+
+  // Cross-check against the headline number. If overall citations grew but
+  // we couldn't attribute the delta to any paper (id rotation, paper removed,
+  // missing fetch page, etc.), surface the unattributed delta so the user
+  // doesn't think the extension is broken.
+  const baselineSum = state.baselinePapers
+    ? Object.values(state.baselinePapers).reduce((a, p) => a + (p.citations || 0), 0)
+    : 0;
+  const currentTotal = parseInt(String(state.citations || '').replace(/,/g, ''), 10);
+  const headlineDelta = Number.isFinite(currentTotal) && baselineSum
+    ? Math.max(0, currentTotal - baselineSum)
+    : 0;
+  const displayedDelta = Math.max(totalDelta, headlineDelta);
+  $('growthTotal').textContent = '+' + displayedDelta;
 
   if (rows.length === 0) {
+    if (headlineDelta > 0) {
+      $('growthEmpty').innerHTML =
+        `总引用较基线 <b>+${headlineDelta}</b>，但未能定位到具体论文（可能因 Google Scholar 调整了论文 ID 或该论文不在前几页）。<br/>可点"重置基线"以当前状态重新开始统计。`;
+    } else {
+      $('growthEmpty').textContent = '本周期内暂无引用增长。';
+    }
     $('growthEmpty').classList.remove('hidden');
     return;
   }
