@@ -190,18 +190,30 @@ async function updateCitations() {
 
     const total = result.total || String(sumCitations(result.papers));
     const now = Date.now();
+    const paperCount = Object.keys(result.papers).length;
 
-    // First time: seed baseline
+    // Don't poison the baseline with an empty paper map. If the fetch
+    // somehow returned 0 parsed papers (Scholar markup change, partial
+    // response, transient block), keep whatever we already have.
     const prev = await chrome.storage.local.get(['baselinePapers', 'baselineAt']);
     const patch = {
       citations: total,
-      currentPapers: result.papers,
       lastUpdatedAt: now,
       lastError: ''
     };
-    if (!prev.baselinePapers || !prev.baselineAt) {
-      patch.baselinePapers = result.papers;
-      patch.baselineAt = now;
+    if (paperCount > 0) {
+      patch.currentPapers = result.papers;
+      // Seed baseline only when we have real paper data AND no baseline yet
+      // (or the existing baseline is empty).
+      const baselineEmpty = !prev.baselinePapers
+        || Object.keys(prev.baselinePapers).length === 0
+        || !prev.baselineAt;
+      if (baselineEmpty) {
+        patch.baselinePapers = result.papers;
+        patch.baselineAt = now;
+      }
+    } else {
+      console.warn('[citations] fetch returned 0 papers; keeping previous currentPapers/baseline');
     }
     await chrome.storage.local.set(patch);
 
