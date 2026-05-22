@@ -1,0 +1,42 @@
+id: record-0006
+timestamp: 2026-04-22T03:30:00Z
+summary: >-
+  v0.1.8 surfaces the individual papers whose citation count decreased
+  or that disappeared from current. Previously these were lumped into
+  a single aggregate ("N papers were merged/removed"). The popup now
+  renders a dedicated "引用减少 / 被合并" sub-list under the growth
+  list, naming each paper, the negative delta, and whether it was a
+  drop (paper still present) or a removal (paper merged away).
+participation_mode:
+  - implementation
+  - feature
+participation_intensity: moderate
+autonomy_mode: human-directed
+artifacts:
+  - popup/popup.js
+  - popup/popup.html
+  - popup/popup.css
+  - manifest.json
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User wanted to see which specific paper(s) lost citations or
+    were absorbed by Scholar's duplicate-merge heuristic, not just
+    an aggregate count.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - human_review
+  checks:
+    - node --check popup/popup.js

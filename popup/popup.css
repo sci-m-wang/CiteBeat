@@ -85,6 +85,15 @@ body {
 }
 
 .empty { color: #888; font-size: 12px; padding: 8px 2px; }
+.drop-hdr {
+  margin: 8px 2px 4px;
+  padding-top: 6px;
+  font-size: 11px; color: #888;
+  border-top: 1px dashed #e1e1e1;
+  text-transform: none;
+}
+.item.drop .t { color: #8a5a00; }
+.item.drop .d.neg { color: #b00020; }
 .reconcile {
   margin: 6px 2px 2px; padding: 6px 8px; border-radius: 6px;
   background: #fff7e6; color: #8a5a00;

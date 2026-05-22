@@ -22,10 +22,9 @@ function buildTitleIndex(papers) {
 }
 
 function computeGrowth(current, baseline) {
-  const positive = [];   // papers with delta > 0 — shown in the list
-  let negativeDelta = 0; // sum of negative deltas — surfaced as a reconciliation line
-  let removedCount = 0;  // baseline papers that no longer exist in current
-  if (!baseline) return { positive, negativeDelta, removedCount };
+  const positive = [];   // papers with delta > 0 — shown in the growth list
+  const negative = [];   // papers with delta < 0 OR removed from current
+  if (!baseline) return { positive, negative };
   const baseByTitle = buildTitleIndex(baseline);
   const matchedBaseIds = new Set();
 
@@ -52,25 +51,38 @@ function computeGrowth(current, baseline) {
         isNew: !base
       });
     } else if (delta < 0) {
-      // Citation count dropped on a still-present paper (rare; Scholar
-      // occasionally reclassifies self-citations or removes duplicates).
-      negativeDelta += delta;
+      // Citation count dropped on a still-present paper (Scholar
+      // reclassified self-citations or absorbed a duplicate into another entry).
+      negative.push({
+        id,
+        title: cur.title,
+        url: cur.url,
+        citations: cur.citations,
+        delta,
+        kind: 'dropped'
+      });
     }
   }
 
-  // Papers that existed in baseline but no longer in current. Most common
-  // cause: Scholar merged two entries together. Their baseline citations
-  // are now "missing" and need to be accounted for to keep the math
-  // consistent with the headline total.
+  // Papers that existed in baseline but no longer in current — typically
+  // because Scholar merged two entries together and one of them disappeared.
   for (const id of Object.keys(baseline)) {
     if (!matchedBaseIds.has(id)) {
-      negativeDelta -= (baseline[id].citations || 0);
-      removedCount += 1;
+      const b = baseline[id];
+      negative.push({
+        id,
+        title: b.title,
+        url: b.url,
+        citations: 0,
+        delta: -(b.citations || 0),
+        kind: 'removed'
+      });
     }
   }
 
   positive.sort((a, b) => b.delta - a.delta);
-  return { positive, negativeDelta, removedCount };
+  negative.sort((a, b) => a.delta - b.delta); // most negative first
+  return { positive, negative };
 }
 
 async function render() {
@@ -102,11 +114,13 @@ async function render() {
     $('err').classList.add('hidden');
   }
 
-  const { positive: rows, negativeDelta, removedCount } = computeGrowth(state.currentPapers || {}, state.baselinePapers);
+  const { positive: rows, negative: drops } = computeGrowth(state.currentPapers || {}, state.baselinePapers);
   const list = $('growthList');
   list.innerHTML = '';
   const positiveSum = rows.reduce((a, r) => a + r.delta, 0);
-  const netDelta = positiveSum + negativeDelta; // negativeDelta is <= 0
+  const negativeSum = drops.reduce((a, r) => a + r.delta, 0); // <= 0
+  const removedCount = drops.filter(d => d.kind === 'removed').length;
+  const netDelta = positiveSum + negativeSum;
 
   // Cross-check against the headline number. If overall citations grew but
   // we couldn't attribute the delta to any paper (id rotation, paper removed,
@@ -125,41 +139,31 @@ async function render() {
   const displayedDelta = headlineDelta !== 0 ? headlineDelta : netDelta;
   $('growthTotal').textContent = (displayedDelta >= 0 ? '+' : '') + displayedDelta;
 
-  // Reconciliation note: explain any gap between the headline (current
-  // total - baseline total) and the per-paper positive sum. Common causes:
-  //  - Scholar merged two paper entries: paper A and B each show +1 in
-  //    our diff, but Scholar absorbed one underlying citation, so the
-  //    headline only rose by +1 instead of +2.
-  //  - A baseline paper was removed/merged away entirely (removedCount>0).
-  //  - Paper IDs rotated, so the same paper looks new on both sides.
+  // Reconciliation note: explain the gap between the headline delta and
+  // the per-paper math. Now that we render the negative papers in their
+  // own list, the note only needs to call out residual unattributed gap.
   const noteEl = $('reconcileNote');
   if (noteEl) {
-    const gap = headlineDelta - positiveSum; // negative => list overstates total
-    const showNote = (rows.length > 0 || removedCount > 0) &&
-      (gap !== 0 || removedCount > 0);
+    const gap = headlineDelta - netDelta;
+    const showNote = gap !== 0 && (rows.length > 0 || drops.length > 0);
     if (showNote) {
       const parts = [];
-      if (rows.length > 0) {
-        parts.push(`列表中 ${rows.length} 篇论文合计新增 +${positiveSum}`);
-      }
-      if (removedCount > 0) {
-        parts.push(`另有 ${removedCount} 篇基线论文已被 Scholar 合并或移除（原 ${-negativeDelta} 引用并入其他条目）`);
-      }
-      // Always state the headline delta explicitly and explain the gap.
-      parts.push(`但总引用较基线仅变化 ${headlineDelta >= 0 ? '+' : ''}${headlineDelta}`);
-      if (gap < 0 && removedCount === 0) {
-        parts.push(`差额 ${gap}：Google Scholar 把这些新引用同时计入了多篇论文，但底层只新增了 ${headlineDelta} 次引用（同一篇被合并的重复条目）`);
-      } else if (gap > 0) {
-        parts.push(`差额 +${gap}：可能有论文不在抓取范围或 ID 已变化`);
+      parts.push(`列表内净变化 ${netDelta >= 0 ? '+' : ''}${netDelta}，但总引用较基线变化 ${headlineDelta >= 0 ? '+' : ''}${headlineDelta}`);
+      if (gap < 0) {
+        parts.push(`差额 ${gap}：Scholar 可能把同一次新引用同时计入了多篇论文（合并集群）`);
+      } else {
+        parts.push(`差额 +${gap}：可能有论文超出抓取范围或 ID 已变化`);
       }
       noteEl.textContent = parts.join('；') + '。';
       noteEl.classList.remove('hidden');
+    } else if (rows.length === 0 && drops.length === 0 && removedCount === 0) {
+      noteEl.classList.add('hidden');
     } else {
       noteEl.classList.add('hidden');
     }
   }
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && drops.length === 0) {
     if (headlineDelta > 0) {
       $('growthEmpty').innerHTML =
         `总引用较基线 <b>+${headlineDelta}</b>，但未能定位到具体论文（可能因 Google Scholar 调整了论文 ID 或该论文不在前几页）。<br/>可点"重置基线"以当前状态重新开始统计。`;
@@ -191,6 +195,42 @@ async function render() {
     c.textContent = r.citations;
     li.append(a, d, c);
     list.appendChild(li);
+  }
+
+  // Render the "decreased / merged-away" papers in their own labelled
+  // sub-section so the user can see exactly which paper(s) lost citations.
+  const dropList = $('dropList');
+  const dropHdr = $('dropHdr');
+  if (dropList && dropHdr) {
+    dropList.innerHTML = '';
+    if (drops.length > 0) {
+      dropHdr.classList.remove('hidden');
+      dropList.classList.remove('hidden');
+      for (const r of drops) {
+        const li = document.createElement('li');
+        li.className = 'item drop';
+        const a = document.createElement('a');
+        a.className = 't';
+        const tag = r.kind === 'removed' ? '  · 已合并/移除' : '  · 引用减少';
+        a.textContent = r.title + tag;
+        if (r.url) {
+          a.href = r.url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+        }
+        const d = document.createElement('div');
+        d.className = 'd neg';
+        d.textContent = String(r.delta); // already negative
+        const c = document.createElement('div');
+        c.className = 'c';
+        c.textContent = r.kind === 'removed' ? '—' : String(r.citations);
+        li.append(a, d, c);
+        dropList.appendChild(li);
+      }
+    } else {
+      dropHdr.classList.add('hidden');
+      dropList.classList.add('hidden');
+    }
   }
 }
 
