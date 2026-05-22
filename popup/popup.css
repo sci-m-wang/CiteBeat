@@ -85,6 +85,12 @@ body {
 }
 
 .empty { color: #888; font-size: 12px; padding: 8px 2px; }
+.reconcile {
+  margin: 6px 2px 2px; padding: 6px 8px; border-radius: 6px;
+  background: #fff7e6; color: #8a5a00;
+  font-size: 11px; line-height: 1.5;
+  border: 1px solid #ffe1a8;
+}
 .hidden { display: none; }
 .err {
   margin: 8px 12px; padding: 8px; border-radius: 6px;

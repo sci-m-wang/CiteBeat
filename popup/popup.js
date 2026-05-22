@@ -22,19 +22,28 @@ function buildTitleIndex(papers) {
 }
 
 function computeGrowth(current, baseline) {
-  const rows = [];
-  if (!baseline) return rows;
+  const positive = [];   // papers with delta > 0 — shown in the list
+  let negativeDelta = 0; // sum of negative deltas — surfaced as a reconciliation line
+  let removedCount = 0;  // baseline papers that no longer exist in current
+  if (!baseline) return { positive, negativeDelta, removedCount };
   const baseByTitle = buildTitleIndex(baseline);
+  const matchedBaseIds = new Set();
+
   for (const id of Object.keys(current)) {
     const cur = current[id];
     // Match by id first, fall back to normalized title (Scholar sometimes
     // rotates citation_for_view ids or merges/splits paper entries).
     let base = baseline[id];
-    if (!base) base = baseByTitle[normTitle(cur.title)];
+    if (base) {
+      matchedBaseIds.add(id);
+    } else {
+      base = baseByTitle[normTitle(cur.title)];
+      if (base) matchedBaseIds.add(base.id);
+    }
     const baseC = base ? (base.citations || 0) : 0;
     const delta = (cur.citations || 0) - baseC;
     if (delta > 0) {
-      rows.push({
+      positive.push({
         id,
         title: cur.title,
         url: cur.url,
@@ -42,10 +51,26 @@ function computeGrowth(current, baseline) {
         delta,
         isNew: !base
       });
+    } else if (delta < 0) {
+      // Citation count dropped on a still-present paper (rare; Scholar
+      // occasionally reclassifies self-citations or removes duplicates).
+      negativeDelta += delta;
     }
   }
-  rows.sort((a, b) => b.delta - a.delta);
-  return rows;
+
+  // Papers that existed in baseline but no longer in current. Most common
+  // cause: Scholar merged two entries together. Their baseline citations
+  // are now "missing" and need to be accounted for to keep the math
+  // consistent with the headline total.
+  for (const id of Object.keys(baseline)) {
+    if (!matchedBaseIds.has(id)) {
+      negativeDelta -= (baseline[id].citations || 0);
+      removedCount += 1;
+    }
+  }
+
+  positive.sort((a, b) => b.delta - a.delta);
+  return { positive, negativeDelta, removedCount };
 }
 
 async function render() {
@@ -77,10 +102,11 @@ async function render() {
     $('err').classList.add('hidden');
   }
 
-  const rows = computeGrowth(state.currentPapers || {}, state.baselinePapers);
+  const { positive: rows, negativeDelta, removedCount } = computeGrowth(state.currentPapers || {}, state.baselinePapers);
   const list = $('growthList');
   list.innerHTML = '';
-  const totalDelta = rows.reduce((a, r) => a + r.delta, 0);
+  const positiveSum = rows.reduce((a, r) => a + r.delta, 0);
+  const netDelta = positiveSum + negativeDelta; // negativeDelta is <= 0
 
   // Cross-check against the headline number. If overall citations grew but
   // we couldn't attribute the delta to any paper (id rotation, paper removed,
@@ -91,15 +117,41 @@ async function render() {
     : 0;
   const currentTotal = parseInt(String(state.citations || '').replace(/,/g, ''), 10);
   const headlineDelta = Number.isFinite(currentTotal) && baselineSum
-    ? Math.max(0, currentTotal - baselineSum)
+    ? currentTotal - baselineSum
     : 0;
-  const displayedDelta = Math.max(totalDelta, headlineDelta);
-  $('growthTotal').textContent = '+' + displayedDelta;
+
+  // Prefer the headline delta when paper-level math is messy (Scholar
+  // merges, removed papers, id rotation). Fall back to our paper sum.
+  const displayedDelta = headlineDelta !== 0 ? headlineDelta : netDelta;
+  $('growthTotal').textContent = (displayedDelta >= 0 ? '+' : '') + displayedDelta;
+
+  // Reconciliation note when paper-level positives don't match the
+  // headline delta (e.g. Scholar merged 2 entries into 1, so +2 papers
+  // gained citations but the headline only rose by +1).
+  const noteEl = $('reconcileNote');
+  if (noteEl) {
+    const mismatch = headlineDelta !== positiveSum;
+    if (mismatch && (rows.length > 0 || removedCount > 0)) {
+      const parts = [];
+      if (positiveSum > 0) parts.push(`本周期 ${rows.length} 篇论文新增 +${positiveSum} 引用`);
+      if (removedCount > 0) parts.push(`${removedCount} 篇基线论文被 Scholar 合并/移除（${negativeDelta} 引用并入其他条目）`);
+      if (headlineDelta !== positiveSum + negativeDelta && headlineDelta !== 0) {
+        parts.push(`总数较基线净变化 ${headlineDelta >= 0 ? '+' : ''}${headlineDelta}`);
+      }
+      noteEl.textContent = parts.join('；') + '。';
+      noteEl.classList.remove('hidden');
+    } else {
+      noteEl.classList.add('hidden');
+    }
+  }
 
   if (rows.length === 0) {
     if (headlineDelta > 0) {
       $('growthEmpty').innerHTML =
         `总引用较基线 <b>+${headlineDelta}</b>，但未能定位到具体论文（可能因 Google Scholar 调整了论文 ID 或该论文不在前几页）。<br/>可点"重置基线"以当前状态重新开始统计。`;
+    } else if (headlineDelta < 0) {
+      $('growthEmpty').innerHTML =
+        `总引用较基线 <b>${headlineDelta}</b>（Scholar 可能合并或移除了论文）。可点"重置基线"以当前状态重新开始统计。`;
     } else {
       $('growthEmpty').textContent = '本周期内暂无引用增长。';
     }

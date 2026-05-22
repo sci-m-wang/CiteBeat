@@ -1,0 +1,46 @@
+id: record-0005
+timestamp: 2026-04-22T03:00:00Z
+summary: >-
+  v0.1.6 reconciles per-paper growth with Scholar's paper-merging
+  behaviour. When Scholar merges duplicate entries, two papers can show
+  a positive delta while the headline total only rises by one. The
+  popup now (a) accounts for baseline papers that disappeared from
+  current (treated as negative attribution), (b) trusts the headline
+  delta for the badge number, and (c) shows a reconciliation note that
+  explains the gap between paper-level positives and the headline.
+participation_mode:
+  - implementation
+  - feature
+  - bugfix
+participation_intensity: moderate
+autonomy_mode: human-directed
+artifacts:
+  - popup/popup.js
+  - popup/popup.html
+  - popup/popup.css
+  - manifest.json
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User observed total citations rising by 1 while the growth list
+    showed two newly-cited papers. Diagnosed as Scholar merging a
+    duplicate entry: two papers gain citations, one baseline paper
+    is absorbed into one of them, headline net change is +1.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - human_review
+  checks:
+    - node --check popup/popup.js
+    - HTML/CSS rendering exercised manually
