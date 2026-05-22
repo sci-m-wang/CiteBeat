@@ -125,18 +125,32 @@ async function render() {
   const displayedDelta = headlineDelta !== 0 ? headlineDelta : netDelta;
   $('growthTotal').textContent = (displayedDelta >= 0 ? '+' : '') + displayedDelta;
 
-  // Reconciliation note when paper-level positives don't match the
-  // headline delta (e.g. Scholar merged 2 entries into 1, so +2 papers
-  // gained citations but the headline only rose by +1).
+  // Reconciliation note: explain any gap between the headline (current
+  // total - baseline total) and the per-paper positive sum. Common causes:
+  //  - Scholar merged two paper entries: paper A and B each show +1 in
+  //    our diff, but Scholar absorbed one underlying citation, so the
+  //    headline only rose by +1 instead of +2.
+  //  - A baseline paper was removed/merged away entirely (removedCount>0).
+  //  - Paper IDs rotated, so the same paper looks new on both sides.
   const noteEl = $('reconcileNote');
   if (noteEl) {
-    const mismatch = headlineDelta !== positiveSum;
-    if (mismatch && (rows.length > 0 || removedCount > 0)) {
+    const gap = headlineDelta - positiveSum; // negative => list overstates total
+    const showNote = (rows.length > 0 || removedCount > 0) &&
+      (gap !== 0 || removedCount > 0);
+    if (showNote) {
       const parts = [];
-      if (positiveSum > 0) parts.push(`本周期 ${rows.length} 篇论文新增 +${positiveSum} 引用`);
-      if (removedCount > 0) parts.push(`${removedCount} 篇基线论文被 Scholar 合并/移除（${negativeDelta} 引用并入其他条目）`);
-      if (headlineDelta !== positiveSum + negativeDelta && headlineDelta !== 0) {
-        parts.push(`总数较基线净变化 ${headlineDelta >= 0 ? '+' : ''}${headlineDelta}`);
+      if (rows.length > 0) {
+        parts.push(`列表中 ${rows.length} 篇论文合计新增 +${positiveSum}`);
+      }
+      if (removedCount > 0) {
+        parts.push(`另有 ${removedCount} 篇基线论文已被 Scholar 合并或移除（原 ${-negativeDelta} 引用并入其他条目）`);
+      }
+      // Always state the headline delta explicitly and explain the gap.
+      parts.push(`但总引用较基线仅变化 ${headlineDelta >= 0 ? '+' : ''}${headlineDelta}`);
+      if (gap < 0 && removedCount === 0) {
+        parts.push(`差额 ${gap}：Google Scholar 把这些新引用同时计入了多篇论文，但底层只新增了 ${headlineDelta} 次引用（同一篇被合并的重复条目）`);
+      } else if (gap > 0) {
+        parts.push(`差额 +${gap}：可能有论文不在抓取范围或 ID 已变化`);
       }
       noteEl.textContent = parts.join('；') + '。';
       noteEl.classList.remove('hidden');
