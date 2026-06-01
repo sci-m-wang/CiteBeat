@@ -21,6 +21,17 @@ function buildTitleIndex(papers) {
   return idx;
 }
 
+function baselineModeLabel(settings) {
+  const mode = settings?.baselineMode || 'manual';
+  if (mode === 'weekly') return '每周一';
+  if (mode === 'monthly') return '每月 1 号';
+  if (mode === 'interval') {
+    const days = Math.max(1, parseInt(settings?.baselineIntervalDays, 10) || 10);
+    return `每 ${days} 天`;
+  }
+  return '手动';
+}
+
 function computeGrowth(current, baseline) {
   const positive = [];   // papers with delta > 0 — shown in the growth list
   const negative = [];   // papers with delta < 0 OR removed from current
@@ -100,7 +111,9 @@ async function render() {
   $('sourceTag').textContent = src;
   $('total').textContent = state.citations || '—';
   $('updatedAt').textContent = state.lastUpdatedAt ? `更新: ${fmtTime(state.lastUpdatedAt)}` : '尚未更新';
-  $('baselineAt').textContent = state.baselineAt ? `基线: ${fmtTime(state.baselineAt)}` : '';
+  $('baselineAt').textContent = state.baselineAt
+    ? `本周期从 ${fmtTime(state.baselineAt)} 开始 · ${baselineModeLabel(settings)}`
+    : '';
 
   if (!configured) {
     $('err').innerHTML = '还未配置作者 ID。<a href="#" id="goOpt">点此前往设置</a>';
@@ -108,7 +121,8 @@ async function render() {
     const link = document.getElementById('goOpt');
     if (link) link.addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
   } else if (state.lastError) {
-    $('err').textContent = '错误: ' + state.lastError;
+    const isWarning = state.lastError.startsWith('本次只抓到');
+    $('err').textContent = (isWarning ? '提示: ' : '错误: ') + state.lastError;
     $('err').classList.remove('hidden');
   } else {
     $('err').classList.add('hidden');
@@ -116,7 +130,12 @@ async function render() {
 
   const { positive: rows, negative: drops } = computeGrowth(state.currentPapers || {}, state.baselinePapers);
   const list = $('growthList');
+  const dropList = $('dropList');
+  const dropHdr = $('dropHdr');
   list.innerHTML = '';
+  if (dropList) dropList.innerHTML = '';
+  if (dropHdr) dropHdr.classList.add('hidden');
+  if (dropList) dropList.classList.add('hidden');
   const positiveSum = rows.reduce((a, r) => a + r.delta, 0);
   const negativeSum = drops.reduce((a, r) => a + r.delta, 0); // <= 0
   const removedCount = drops.filter(d => d.kind === 'removed').length;
@@ -148,7 +167,7 @@ async function render() {
     const showNote = gap !== 0 && (rows.length > 0 || drops.length > 0);
     if (showNote) {
       const parts = [];
-      parts.push(`列表内净变化 ${netDelta >= 0 ? '+' : ''}${netDelta}，但总引用较基线变化 ${headlineDelta >= 0 ? '+' : ''}${headlineDelta}`);
+      parts.push(`列表内净变化 ${netDelta >= 0 ? '+' : ''}${netDelta}，但总引用较本周期起点变化 ${headlineDelta >= 0 ? '+' : ''}${headlineDelta}`);
       if (gap < 0) {
         parts.push(`差额 ${gap}：Scholar 可能把同一次新引用同时计入了多篇论文（合并集群）`);
       } else {
@@ -166,10 +185,10 @@ async function render() {
   if (rows.length === 0 && drops.length === 0) {
     if (headlineDelta > 0) {
       $('growthEmpty').innerHTML =
-        `总引用较基线 <b>+${headlineDelta}</b>，但未能定位到具体论文（可能因 Google Scholar 调整了论文 ID 或该论文不在前几页）。<br/>可点"重置基线"以当前状态重新开始统计。`;
+        `总引用较本周期起点 <b>+${headlineDelta}</b>，但未能定位到具体论文（可能因 Google Scholar 调整了论文 ID 或该论文不在前几页）。<br/>可点"开始新周期"以当前状态重新开始统计。`;
     } else if (headlineDelta < 0) {
       $('growthEmpty').innerHTML =
-        `总引用较基线 <b>${headlineDelta}</b>（Scholar 可能合并或移除了论文）。可点"重置基线"以当前状态重新开始统计。`;
+        `总引用较本周期起点 <b>${headlineDelta}</b>（Scholar 可能合并或移除了论文）。可点"开始新周期"以当前状态重新开始统计。`;
     } else {
       $('growthEmpty').textContent = '本周期内暂无引用增长。';
     }
@@ -199,10 +218,7 @@ async function render() {
 
   // Render the "decreased / merged-away" papers in their own labelled
   // sub-section so the user can see exactly which paper(s) lost citations.
-  const dropList = $('dropList');
-  const dropHdr = $('dropHdr');
   if (dropList && dropHdr) {
-    dropList.innerHTML = '';
     if (drops.length > 0) {
       dropHdr.classList.remove('hidden');
       dropList.classList.remove('hidden');
@@ -247,8 +263,13 @@ $('refresh').addEventListener('click', async () => {
 });
 
 $('resetBaseline').addEventListener('click', async () => {
-  if (!confirm('将当前引用状态保存为新基线？之后显示的增长将从现在开始计算。')) return;
-  await chrome.runtime.sendMessage({ type: 'resetBaseline' });
+  if (!confirm('将当前引用状态设为新统计周期的起点？之后的新增引用将从现在开始计算。')) return;
+  const res = await chrome.runtime.sendMessage({ type: 'resetBaseline' });
+  if (res && !res.ok) {
+    $('err').textContent = '提示: ' + (res.error || '无法开始新周期');
+    $('err').classList.remove('hidden');
+    return;
+  }
   render();
 });
 
