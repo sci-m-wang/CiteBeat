@@ -8,6 +8,7 @@
            max-width: 620px; margin: 40px auto; padding: 0 20px; color: #1c1c1e; }
     h1 { display: flex; align-items: center; gap: 10px; margin-top: 0; }
     h1 img { width: 36px; height: 36px; }
+    h2 { font-size: 16px; margin: 22px 0 10px; }
     .row { display: flex; flex-direction: column; margin-bottom: 14px; }
     .row label { font-weight: 600; margin-bottom: 4px; }
     .row input[type=text], .row input[type=number], .row select {
@@ -22,6 +23,9 @@
       padding: 8px 16px; font: inherit; cursor: pointer;
     }
     button:hover { background: #1642a8; }
+    button.secondary { background: #555; }
+    button.secondary:hover { background: #444; }
+    .button-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .status { margin-left: 10px; font-size: 12px; color: #0a7a2f; }
     .status.err { color: #b00020; }
     hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
@@ -85,9 +89,21 @@
 
   <hr>
 
-  <div>
+  <h2>数据管理</h2>
+  <div class="row">
+    <div class="button-row">
+      <button id="exportBackup" type="button">导出备份</button>
+      <button id="importBackup" type="button" class="secondary">导入备份</button>
+      <input id="backupFile" class="hidden" type="file" accept="application/json,.json">
+    </div>
+    <div class="hint">备份包含设置、当前引用、统计周期和历史记录；不会上传到任何服务器。</div>
+  </div>
+
+  <hr>
+
+  <div class="button-row">
     <button id="save">保存</button>
-    <button id="refresh" style="background:#555">立即刷新</button>
+    <button id="refresh" type="button" class="secondary">立即刷新</button>
     <span id="status" class="status"></span>
   </div>
 
