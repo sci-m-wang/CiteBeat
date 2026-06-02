@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>CiteBeat — 分享图</title>
+  <link rel="stylesheet" href="share.css">
+</head>
+<body>
+  <main class="page">
+    <section class="preview-panel">
+      <div class="preview-frame">
+        <canvas id="shareCanvas" width="1200" height="630"></canvas>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="brand">
+        <img src="../icons/icon128.png" width="36" height="36" alt="">
+        <div>
+          <h1>CiteBeat 分享图</h1>
+          <p>生成一张包含引用增长、趋势和项目入口的 PNG。</p>
+        </div>
+      </div>
+
+      <div id="status" class="status">正在生成…</div>
+
+      <div class="actions">
+        <button id="download" type="button" disabled>下载 PNG</button>
+        <button id="rerender" type="button" class="secondary">重新生成</button>
+      </div>
+
+      <div class="meta">
+        <div id="metricTotal">总引用 —</div>
+        <div id="metricDelta">本周期 —</div>
+        <div id="metricSource">数据源 —</div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="qr.js"></script>
+  <script src="share.js"></script>
+</body>
+</html>

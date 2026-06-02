@@ -395,6 +395,15 @@ $('options').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
+$('share').addEventListener('click', () => {
+  const url = chrome.runtime.getURL ? chrome.runtime.getURL('share/share.html') : '../share/share.html';
+  if (chrome.tabs && chrome.tabs.create) {
+    chrome.tabs.create({ url });
+  } else {
+    window.open(url, '_blank');
+  }
+});
+
 // Live update while popup is open
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local') render();

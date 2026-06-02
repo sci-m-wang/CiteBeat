@@ -1,0 +1,57 @@
+id: record-0009
+timestamp: 2026-06-02T00:00:00Z
+summary: >-
+  v0.2.2 adds a local share-card generator. The popup opens a dedicated share
+  page that renders a 1200x630 PNG with CiteBeat branding, citation growth or
+  snapshot metrics, total citations, a local-history trend chart, Top mover
+  papers, the project GitHub URL, and a locally generated QR code. The feature
+  uses Canvas and local storage only, with no new browser permissions and no
+  external QR or image service.
+participation_mode:
+  - implementation
+  - feature
+participation_intensity: high
+autonomy_mode: human-directed
+artifacts:
+  - manifest.json
+  - pack.sh
+  - README.md
+  - popup/popup.html
+  - popup/popup.js
+  - share/share.html
+  - share/share.css
+  - share/share.js
+  - share/qr.js
+  - .sympro/records/009-share-card.yaml
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - codex
+provenance:
+  prompt_mode: plan
+  prompt_summary: >-
+    User requested a complete implementation of the v0.2.2 one-click share
+    image feature after selecting an editorial hero card direction with
+    stronger CiteBeat project identity, plus broad and detailed testing because
+    the feature involves image generation and sharing.
+validation:
+  review_status: passed
+  validation_mode:
+    - automated_checks
+    - browser_harness
+    - visual_review
+  checks:
+    - node --check background.js
+    - node --check popup/popup.js
+    - node --check options/options.js
+    - node --check share/share.js
+    - node --check share/qr.js
+    - git diff --check
+    - ./pack.sh
