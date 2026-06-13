@@ -16,6 +16,7 @@
     .row .hint { color: #666; font-size: 12px; margin-top: 4px; }
     .radio-group { display: flex; gap: 16px; margin: 4px 0; }
     .radio-group label { font-weight: 400; display: flex; align-items: center; gap: 6px; }
+    .radio-group.wrap { flex-wrap: wrap; gap: 10px 16px; }
     button {
       background: #1e4fc2; color: #fff; border: none; border-radius: 6px;
       padding: 8px 16px; font: inherit; cursor: pointer;
@@ -31,6 +32,7 @@
       display: none;
     }
     .welcome.show { display: block; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
@@ -63,6 +65,22 @@
   <div class="row">
     <label for="periodMinutes">刷新间隔（分钟）</label>
     <input id="periodMinutes" type="number" min="1" step="1" value="30">
+  </div>
+
+  <div class="row">
+    <label>统计周期</label>
+    <div class="radio-group wrap">
+      <label><input type="radio" name="baselineMode" value="manual"> 手动开始新周期</label>
+      <label><input type="radio" name="baselineMode" value="weekly"> 每周一自动开始</label>
+      <label><input type="radio" name="baselineMode" value="monthly"> 每月 1 号自动开始</label>
+      <label><input type="radio" name="baselineMode" value="interval"> 每 N 天自动开始</label>
+    </div>
+    <div class="hint">统计周期决定“本周期新增引用”从什么时候开始计算；手动按钮仍可随时开始新周期。</div>
+  </div>
+
+  <div id="baselineIntervalRow" class="row hidden">
+    <label for="baselineIntervalDays">自动开始间隔（天）</label>
+    <input id="baselineIntervalDays" type="number" min="1" step="1" value="10">
   </div>
 
   <hr>

@@ -1,0 +1,52 @@
+id: record-0007
+timestamp: 2026-06-01T00:00:00Z
+summary: >-
+  v0.2.0 adds automatic statistics periods and lightweight citation history.
+  Users can keep manual period starts or choose weekly, monthly, or every-N-day
+  automatic periods. Successful refreshes now store compact total-citation
+  snapshots plus top paper-change summaries when totals, tracked author/source,
+  or paper-level deltas change. Paper-list keying and suspicious drop detection
+  protect future trend, milestone, and sharing features from stale or partial
+  paper snapshots without storing full paper history.
+participation_mode:
+  - implementation
+  - feature
+participation_intensity: moderate
+autonomy_mode: human-directed
+artifacts:
+  - background.js
+  - options/options.html
+  - options/options.js
+  - popup/popup.js
+  - manifest.json
+  - README.md
+  - .sympro/records/007-auto-baseline-history.yaml
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - codex
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User requested implementation of the planned CiteBeat v0.2.0 scope:
+    automatic weekly/monthly/interval statistics periods, tracking keys across
+    data source or author changes, compact local citation history with top
+    paper-change summaries, popup period mode display, partial-fetch protection,
+    and README/version updates.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - automated_checks
+    - manual_review
+  checks:
+    - node --check background.js
+    - node --check popup/popup.js
+    - node --check options/options.js
+    - ./pack.sh
