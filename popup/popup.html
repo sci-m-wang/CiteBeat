@@ -13,6 +13,7 @@
     </div>
     <div class="actions">
       <button id="refresh" title="立即刷新">刷新</button>
+      <button id="share" title="生成分享图">分享</button>
       <button id="options" title="设置">设置</button>
     </div>
   </header>
@@ -27,6 +28,15 @@
       <div class="muted" id="updatedAt">尚未更新</div>
       <div class="muted" id="baselineAt"></div>
     </div>
+  </section>
+
+  <section class="trend">
+    <div class="trend-hdr">
+      <div>引用趋势</div>
+      <div id="trendMeta" class="trend-meta"></div>
+    </div>
+    <div id="trendChart" class="trend-chart hidden"></div>
+    <div id="trendEmpty" class="empty">积累 2 次变化后显示趋势。</div>
   </section>
 
   <section class="growth">

@@ -1,0 +1,53 @@
+id: record-0008
+timestamp: 2026-06-01T00:00:00Z
+summary: >-
+  v0.2.1 adds manual backup/restore and a lightweight popup citation trend.
+  Users can export local settings, current citation state, statistics period
+  data, and citation history as a JSON file, then manually restore that backup
+  with validation and confirmation. The popup now filters citationHistory by
+  the active data source and author, rendering a compact SVG trend for recent
+  total-citation snapshots without introducing new permissions or chart
+  dependencies.
+participation_mode:
+  - implementation
+  - feature
+participation_intensity: moderate
+autonomy_mode: human-directed
+artifacts:
+  - background.js
+  - options/options.html
+  - options/options.js
+  - popup/popup.html
+  - popup/popup.js
+  - popup/popup.css
+  - manifest.json
+  - README.md
+  - .sympro/records/008-backup-trend.yaml
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - codex
+provenance:
+  prompt_mode: plan
+  prompt_summary: >-
+    User requested implementation of the planned CiteBeat v0.2.1 scope:
+    manual backup/restore, storage schema version initialization, popup
+    citation trend chart from citationHistory, README/version updates, and no
+    sharing feature or new browser permissions.
+validation:
+  review_status: pending
+  validation_mode:
+    - automated_checks
+  checks:
+    - node --check background.js
+    - node --check popup/popup.js
+    - node --check options/options.js
+    - git diff --check
+    - ./pack.sh

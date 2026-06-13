@@ -32,6 +32,123 @@ function baselineModeLabel(settings) {
   return '手动';
 }
 
+function getActiveAuthorId(settings) {
+  if (!settings) return '';
+  return settings.source === 'semanticscholar'
+    ? (settings.semanticScholarId || '')
+    : (settings.scholarId || '');
+}
+
+function getTrackingKey(settings) {
+  const source = settings?.source === 'semanticscholar' ? 'semanticscholar' : 'scholar';
+  const authorId = getActiveAuthorId(settings);
+  return authorId ? `${source}:${authorId}` : '';
+}
+
+function fmtSigned(n) {
+  return `${n >= 0 ? '+' : ''}${n}`;
+}
+
+function fmtTrendTick(ts, includeTime) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  const date = `${d.getMonth() + 1}/${d.getDate()}`;
+  return includeTime ? `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}` : date;
+}
+
+function sameLocalDay(a, b) {
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear()
+    && da.getMonth() === db.getMonth()
+    && da.getDate() === db.getDate();
+}
+
+function buildTrendSvg(rows) {
+  const w = 336;
+  const h = 104;
+  const padX = 18;
+  const padTop = 18;
+  const padBottom = 24;
+  const plotW = w - padX * 2;
+  const plotH = h - padTop - padBottom;
+  const totals = rows.map(r => r.total);
+  const min = Math.min(...totals);
+  const max = Math.max(...totals);
+  const span = max - min;
+  const yFor = (total) => span === 0
+    ? padTop + plotH / 2
+    : padTop + ((max - total) / span) * plotH;
+  const points = rows.map((row, idx) => {
+    const x = padX + (idx / (rows.length - 1)) * plotW;
+    const y = yFor(row.total);
+    return { x, y };
+  });
+  const path = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const baselineY = h - padBottom;
+  const area = `${path} L ${points[points.length - 1].x.toFixed(1)} ${baselineY.toFixed(1)} L ${points[0].x.toFixed(1)} ${baselineY.toFixed(1)} Z`;
+  const firstPoint = points[0];
+  const last = points[points.length - 1];
+  const first = rows[0];
+  const final = rows[rows.length - 1];
+  const includeTime = sameLocalDay(first.ts, final.ts);
+  const dots = rows.length <= 12
+    ? points.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2" fill="#fff" stroke="#1e4fc2" stroke-width="1.5"/>`).join('')
+    : '';
+
+  return `
+    <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="引用趋势图">
+      <defs>
+        <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#d8e5ff" stop-opacity="0.95"/>
+          <stop offset="100%" stop-color="#d8e5ff" stop-opacity="0.08"/>
+        </linearGradient>
+      </defs>
+      <line x1="${padX}" y1="${padTop}" x2="${w - padX}" y2="${padTop}" stroke="#edf1f8" stroke-width="1"/>
+      <line x1="${padX}" y1="${padTop + plotH / 2}" x2="${w - padX}" y2="${padTop + plotH / 2}" stroke="#edf1f8" stroke-width="1"/>
+      <line x1="${padX}" y1="${baselineY}" x2="${w - padX}" y2="${baselineY}" stroke="#edf1f8" stroke-width="1"/>
+      <path d="${area}" fill="url(#trendFill)"/>
+      <path d="${path}" fill="none" stroke="#1e4fc2" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      ${dots}
+      <circle cx="${firstPoint.x.toFixed(1)}" cy="${firstPoint.y.toFixed(1)}" r="3" fill="#fff" stroke="#1e4fc2" stroke-width="1.8"/>
+      <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="4" fill="#1e4fc2" stroke="#fff" stroke-width="1.5"/>
+      <text x="${padX}" y="12" fill="#8a8a8e" font-size="9">${max}</text>
+      <text x="${padX}" y="${baselineY - 4}" fill="#8a8a8e" font-size="9">${min}</text>
+      <text x="${padX}" y="${h - 7}" fill="#8a8a8e" font-size="9">${fmtTrendTick(first.ts, includeTime)}</text>
+      <text x="${w - padX}" y="${h - 7}" text-anchor="end" fill="#8a8a8e" font-size="9">${fmtTrendTick(final.ts, includeTime)}</text>
+    </svg>`;
+}
+
+function renderTrend(settings, history) {
+  const chart = $('trendChart');
+  const empty = $('trendEmpty');
+  const meta = $('trendMeta');
+  const trackingKey = getTrackingKey(settings);
+  const rows = (Array.isArray(history) ? history : [])
+    .filter(item => item && item.trackingKey === trackingKey && Number.isFinite(Number(item.total)))
+    .map(item => ({ ts: Number(item.ts) || 0, total: Number(item.total) }))
+    .filter(item => item.ts > 0)
+    .sort((a, b) => a.ts - b.ts)
+    .slice(-30);
+
+  chart.innerHTML = '';
+  meta.textContent = '';
+  if (!trackingKey || rows.length < 2) {
+    chart.classList.add('hidden');
+    empty.textContent = trackingKey ? '积累 2 次变化后显示趋势。' : '配置作者 ID 后显示趋势。';
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  meta.textContent = `${rows.length} 次记录 · ${fmtSigned(last.total - first.total)} · 最新 ${last.total}`;
+  chart.innerHTML = buildTrendSvg(rows);
+  chart.classList.remove('hidden');
+  empty.classList.add('hidden');
+}
+
 function computeGrowth(current, baseline) {
   const positive = [];   // papers with delta > 0 — shown in the growth list
   const negative = [];   // papers with delta < 0 OR removed from current
@@ -99,7 +216,7 @@ function computeGrowth(current, baseline) {
 async function render() {
   const { settings } = await chrome.storage.local.get('settings');
   const state = await chrome.storage.local.get([
-    'citations', 'currentPapers', 'baselinePapers', 'baselineAt', 'lastUpdatedAt', 'lastError'
+    'citations', 'currentPapers', 'baselinePapers', 'baselineAt', 'lastUpdatedAt', 'lastError', 'citationHistory'
   ]);
 
   const configured = settings && (
@@ -114,6 +231,7 @@ async function render() {
   $('baselineAt').textContent = state.baselineAt
     ? `本周期从 ${fmtTime(state.baselineAt)} 开始 · ${baselineModeLabel(settings)}`
     : '';
+  renderTrend(settings, state.citationHistory);
 
   if (!configured) {
     $('err').innerHTML = '还未配置作者 ID。<a href="#" id="goOpt">点此前往设置</a>';
@@ -275,6 +393,15 @@ $('resetBaseline').addEventListener('click', async () => {
 
 $('options').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
+});
+
+$('share').addEventListener('click', () => {
+  const url = chrome.runtime.getURL ? chrome.runtime.getURL('share/share.html') : '../share/share.html';
+  if (chrome.tabs && chrome.tabs.create) {
+    chrome.tabs.create({ url });
+  } else {
+    window.open(url, '_blank');
+  }
 });
 
 // Live update while popup is open

@@ -13,10 +13,19 @@ const DEFAULT_SETTINGS = {
 
 const HISTORY_LIMIT = 1000;
 const HISTORY_CHANGE_LIMIT = 10;
+const STORAGE_SCHEMA_VERSION = 1;
 const PAPER_COUNT_DROP_MIN = 20;
 const PAPER_COUNT_DROP_RATIO = 0.7;
 
 // ---------- Storage helpers ----------
+async function ensureStorageSchema() {
+  const { storageSchemaVersion } = await chrome.storage.local.get('storageSchemaVersion');
+  const current = Number(storageSchemaVersion);
+  if (!Number.isFinite(current) || current < STORAGE_SCHEMA_VERSION) {
+    await chrome.storage.local.set({ storageSchemaVersion: STORAGE_SCHEMA_VERSION });
+  }
+}
+
 async function getSettings() {
   const { settings } = await chrome.storage.local.get('settings');
   return { ...DEFAULT_SETTINGS, ...(settings || {}) };
@@ -349,6 +358,7 @@ function maybeAppendHistory(history, entry) {
 
 // ---------- Core update ----------
 async function updateCitations() {
+  await ensureStorageSchema();
   const settings = await getSettings();
   const trackingKey = getTrackingKey(settings);
   try {
@@ -489,6 +499,7 @@ async function ensureAlarm() {
 
 // ---------- Event listeners ----------
 chrome.runtime.onInstalled.addListener(async (details) => {
+  await ensureStorageSchema();
   await ensureAlarm();
   // First-time install with no ID: open options page so user can configure.
   if (details && details.reason === 'install') {
@@ -504,6 +515,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  await ensureStorageSchema();
   await ensureAlarm();
   delayedUpdateWithRetry();
 });
@@ -517,6 +529,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== 'local') return;
   if (changes.settings) {
     await ensureAlarm();
+    if (changes.restoreInProgress) return;
     updateCitations();
   }
 });
@@ -529,6 +542,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const ok = await updateCitations();
         sendResponse({ ok });
       } else if (msg?.type === 'resetBaseline') {
+        await ensureStorageSchema();
         const settings = await getSettings();
         const { currentPapers, currentPapersKey } = await getState();
         const trackingKey = getTrackingKey(settings);
