@@ -11,9 +11,16 @@ const DEFAULT_SETTINGS = {
   baselineIntervalDays: 10,
   // --- Optional homepage/endpoint reporting ---
   endpointEnabled: false,     // master switch; off by default
-  endpointUrl: '',            // user-provided absolute http(s) URL
+  endpointMode: 'generic',    // 'generic' (plain POST) | 'github' (Contents API)
+  endpointUrl: '',            // generic mode: user-provided absolute http(s) URL
   endpointIntervalDays: 1,    // how often the snapshot is pushed
-  endpointAuthType: 'none'    // 'none' | 'bearer'
+  endpointAuthType: 'none',   // generic mode: 'none' | 'bearer'
+  // GitHub Pages target (github mode). The token lives under its own key.
+  githubOwner: '',
+  githubRepo: '',
+  githubBranch: 'main',
+  githubPath: 'data/citations.json',
+  githubCommitMessage: 'chore(citebeat): update citation snapshot'
 };
 
 const HISTORY_LIMIT = 1000;
@@ -32,6 +39,11 @@ const ENDPOINT_MAX_ATTEMPTS = 3;
 const ENDPOINT_RETRY_BASE_MS = 1500;
 const ENDPOINT_CHECK_ALARM = 'endpointReport';
 const ENDPOINT_CHECK_MINUTES = 60;
+
+// --- GitHub Contents API (for GitHub Pages homepages) ---
+const GITHUB_API = 'https://api.github.com';
+const GITHUB_ORIGIN_PATTERN = 'https://api.github.com/*';
+const GITHUB_API_VERSION = '2022-11-28';
 
 // ---------- Storage helpers ----------
 async function ensureStorageSchema() {
@@ -591,14 +603,6 @@ function originPatternFromUrl(url) {
   return `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/*`;
 }
 
-async function hasEndpointPermission(url) {
-  try {
-    return await chrome.permissions.contains({ origins: [originPatternFromUrl(url)] });
-  } catch (_) {
-    return false;
-  }
-}
-
 async function getEndpointSecret() {
   const { endpointSecret } = await chrome.storage.local.get('endpointSecret');
   return typeof endpointSecret === 'string' ? endpointSecret : '';
@@ -696,21 +700,20 @@ function shouldRetryStatus(status) {
   return status === 408 || status === 429 || status >= 500;
 }
 
-async function postSnapshotOnce(url, payload, headers, timeoutMs) {
+// Single HTTP attempt with a hard timeout. Returns the full body so callers
+// can parse it; error messages slice it down before display.
+async function requestOnce(url, init, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url.toString(), {
-      method: 'POST',
+    const res = await fetch(String(url), {
       credentials: 'omit',
-      headers,
-      body: JSON.stringify(payload),
+      ...init,
       signal: controller.signal
     });
-    // Read a short slice of the body so users can debug their own endpoint.
     let bodyText = '';
     try {
-      bodyText = (await res.text()).slice(0, 300);
+      bodyText = await res.text();
     } catch (_) { /* body is optional */ }
     return { status: res.status, ok: res.ok, body: bodyText };
   } catch (err) {
@@ -723,24 +726,16 @@ async function postSnapshotOnce(url, payload, headers, timeoutMs) {
   }
 }
 
-// POST with timeout + bounded retry. Retries only transient failures.
-async function postSnapshot(url, payload, { authType, secret }) {
-  const headers = {
-    'Content-Type': 'application/json',
-    'X-CiteBeat-Schema': `${SNAPSHOT_SCHEMA}/${SNAPSHOT_SCHEMA_VERSION}`
-  };
-  if (authType === 'bearer' && secret) {
-    headers.Authorization = `Bearer ${secret}`;
-  }
-
+// Bounded retry wrapper. `describeError` turns a non-ok response into an Error.
+async function requestWithRetry(url, init, describeError) {
   let lastError = null;
   for (let attempt = 1; attempt <= ENDPOINT_MAX_ATTEMPTS; attempt++) {
     try {
-      const res = await postSnapshotOnce(url, payload, headers, ENDPOINT_TIMEOUT_MS);
+      const res = await requestOnce(url, init, ENDPOINT_TIMEOUT_MS);
       if (res.ok) return { ...res, attempts: attempt };
-      const detail = res.body ? `：${res.body}` : '';
-      lastError = new Error(`节点返回 HTTP ${res.status}${detail}`);
-      if (!shouldRetryStatus(res.status)) break;
+      // Let the caller inspect non-retryable statuses (e.g. 404/409) itself.
+      if (!shouldRetryStatus(res.status)) return { ...res, attempts: attempt };
+      lastError = describeError(res);
     } catch (err) {
       lastError = err;
     }
@@ -748,7 +743,162 @@ async function postSnapshot(url, payload, { authType, secret }) {
       await new Promise(r => setTimeout(r, ENDPOINT_RETRY_BASE_MS * attempt));
     }
   }
-  throw lastError || new Error('上报失败');
+  throw lastError || new Error('请求失败');
+}
+
+// ---- Generic mode: plain JSON POST ----
+async function deliverGeneric(payload, settings, secret) {
+  const url = normalizeEndpointUrl(settings.endpointUrl);
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-CiteBeat-Schema': `${SNAPSHOT_SCHEMA}/${SNAPSHOT_SCHEMA_VERSION}`
+  };
+  if (settings.endpointAuthType === 'bearer' && secret) {
+    headers.Authorization = `Bearer ${secret}`;
+  }
+  const describe = (res) => new Error(
+    `节点返回 HTTP ${res.status}${res.body ? '：' + res.body.slice(0, 300) : ''}`
+  );
+  const res = await requestWithRetry(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  }, describe);
+  if (!res.ok) throw describe(res);
+  return { status: res.status, attempts: res.attempts, detail: `HTTP ${res.status}` };
+}
+
+// ---- GitHub mode: commit a JSON file via the Contents API ----
+
+// btoa() only handles latin1; paper titles are frequently non-ASCII, so encode
+// to UTF-8 bytes first and feed btoa a binary string.
+function utf8ToBase64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+// Each path segment must be encoded separately so "/" stays a separator.
+function encodeContentPath(path) {
+  return String(path)
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/');
+}
+
+function normalizeGitHubTarget(settings) {
+  const owner = String(settings.githubOwner || '').trim();
+  const repo = String(settings.githubRepo || '').trim();
+  const branch = String(settings.githubBranch || '').trim() || 'main';
+  const path = String(settings.githubPath || '').trim().replace(/^\/+/, '');
+  if (!owner) throw new Error('未填写 GitHub 用户名/组织');
+  if (!repo) throw new Error('未填写 GitHub 仓库名');
+  if (!path) throw new Error('未填写目标文件路径');
+  if (path.endsWith('/')) throw new Error('目标路径必须是文件，不能以 / 结尾');
+  if (!/^[\w.-]+$/.test(owner)) throw new Error('GitHub 用户名/组织含非法字符');
+  if (!/^[\w.-]+$/.test(repo)) throw new Error('GitHub 仓库名含非法字符');
+  return { owner, repo, branch, path };
+}
+
+function githubHeaders(token) {
+  return {
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': GITHUB_API_VERSION,
+    'Authorization': `Bearer ${token}`
+  };
+}
+
+function describeGitHubError(res) {
+  let message = '';
+  try {
+    const parsed = JSON.parse(res.body);
+    message = parsed && parsed.message ? parsed.message : '';
+  } catch (_) { /* non-JSON error body */ }
+  if (res.status === 401) return new Error('GitHub 拒绝了 Token（401），请检查是否过期或填错');
+  if (res.status === 403) {
+    return new Error(`GitHub 拒绝访问（403）${message ? '：' + message : '，可能是 Token 缺少 Contents 写权限或触发限流'}`);
+  }
+  if (res.status === 404) {
+    return new Error('仓库或分支不存在（404），也可能是 Token 没有该私有仓库的权限');
+  }
+  if (res.status === 422) {
+    return new Error(`GitHub 拒绝了提交（422）${message ? '：' + message : '，通常是文件 sha 不匹配'}`);
+  }
+  return new Error(`GitHub 返回 HTTP ${res.status}${message ? '：' + message : ''}`);
+}
+
+// Returns the blob sha of the existing file, or null when it does not exist yet.
+async function getGitHubFileSha(target, token) {
+  const url = `${GITHUB_API}/repos/${target.owner}/${target.repo}/contents/${encodeContentPath(target.path)}`
+    + `?ref=${encodeURIComponent(target.branch)}`;
+  const res = await requestWithRetry(url, {
+    method: 'GET',
+    headers: githubHeaders(token)
+  }, describeGitHubError);
+
+  if (res.status === 404) return null; // first commit of this file
+  if (!res.ok) throw describeGitHubError(res);
+
+  let data;
+  try {
+    data = JSON.parse(res.body);
+  } catch (_) {
+    throw new Error('无法解析 GitHub 返回的文件信息');
+  }
+  if (Array.isArray(data)) {
+    throw new Error('目标路径是一个目录，请指定到具体文件，例如 data/citations.json');
+  }
+  return data && data.sha ? data.sha : null;
+}
+
+async function putGitHubFile(target, token, payload, sha, message) {
+  const url = `${GITHUB_API}/repos/${target.owner}/${target.repo}/contents/${encodeContentPath(target.path)}`;
+  const body = {
+    message,
+    content: utf8ToBase64(JSON.stringify(payload, null, 2) + '\n'),
+    branch: target.branch
+  };
+  if (sha) body.sha = sha;
+  return requestWithRetry(url, {
+    method: 'PUT',
+    headers: { ...githubHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }, describeGitHubError);
+}
+
+async function deliverGitHub(payload, settings, token) {
+  if (!token) throw new Error('未填写 GitHub Token');
+  const target = normalizeGitHubTarget(settings);
+  const message = String(settings.githubCommitMessage || '').trim()
+    || DEFAULT_SETTINGS.githubCommitMessage;
+
+  let sha = await getGitHubFileSha(target, token);
+  let res = await putGitHubFile(target, token, payload, sha, message);
+
+  // 409 means someone else committed between our GET and PUT; refresh and retry once.
+  if (res.status === 409) {
+    sha = await getGitHubFileSha(target, token);
+    res = await putGitHubFile(target, token, payload, sha, message);
+  }
+  if (!res.ok) throw describeGitHubError(res);
+
+  let commitSha = '';
+  try {
+    const parsed = JSON.parse(res.body);
+    commitSha = parsed && parsed.commit && parsed.commit.sha ? parsed.commit.sha.slice(0, 7) : '';
+  } catch (_) { /* commit info is optional */ }
+
+  const action = sha ? '更新' : '创建';
+  return {
+    status: res.status,
+    attempts: res.attempts,
+    detail: `已${action} ${target.owner}/${target.repo}@${target.branch}:${target.path}${commitSha ? ` (${commitSha})` : ''}`
+  };
 }
 
 function isReportDue(settings, lastSentAt, now) {
@@ -757,24 +907,49 @@ function isReportDue(settings, lastSentAt, now) {
   return now - Number(lastSentAt) >= days * 24 * 60 * 60 * 1000;
 }
 
+function getEndpointMode(settings) {
+  return settings.endpointMode === 'github' ? 'github' : 'generic';
+}
+
+// Resolve which origin we need permission for, and fail early on bad config.
+function resolveEndpointTarget(settings) {
+  if (getEndpointMode(settings) === 'github') {
+    normalizeGitHubTarget(settings);
+    return { mode: 'github', originPattern: GITHUB_ORIGIN_PATTERN };
+  }
+  const url = normalizeEndpointUrl(settings.endpointUrl);
+  return { mode: 'generic', originPattern: originPatternFromUrl(url) };
+}
+
+async function hasOriginPermission(originPattern) {
+  try {
+    return await chrome.permissions.contains({ origins: [originPattern] });
+  } catch (_) {
+    return false;
+  }
+}
+
 // Core entry point. `force` bypasses the interval check (manual send / test).
 async function maybeReportSnapshot({ reason = 'scheduled', force = false } = {}) {
   const settings = await getSettings();
   if (!settings.endpointEnabled && !force) return { ok: false, skipped: 'disabled' };
-  if (!settings.endpointUrl) {
-    if (force) throw new Error('未填写节点地址');
-    return { ok: false, skipped: 'no-url' };
+
+  let target;
+  try {
+    target = resolveEndpointTarget(settings);
+  } catch (err) {
+    if (force) throw err;
+    return { ok: false, skipped: 'no-target' };
   }
 
-  const url = normalizeEndpointUrl(settings.endpointUrl);
   const now = Date.now();
   const { endpointLastSentAt } = await chrome.storage.local.get('endpointLastSentAt');
   if (!force && !isReportDue(settings, endpointLastSentAt, now)) {
     return { ok: false, skipped: 'not-due' };
   }
 
-  if (!(await hasEndpointPermission(url))) {
-    const message = '尚未授权访问该节点域名，请在设置页点击“测试节点”或“立即发送”完成授权';
+  if (!(await hasOriginPermission(target.originPattern))) {
+    const message = '尚未授权访问目标域名，请在设置页点击“测试”或“立即发送”完成授权';
     await chrome.storage.local.set({
       endpointLastStatus: 'error',
       endpointLastError: message,
@@ -785,21 +960,24 @@ async function maybeReportSnapshot({ reason = 'scheduled', force = false } = {})
   }
 
   const payload = await buildSnapshot();
-  const secret = await getEndpointSecret();
   try {
-    const res = await postSnapshot(url, payload, {
-      authType: settings.endpointAuthType,
-      secret
-    });
+    let res;
+    if (target.mode === 'github') {
+      const { githubToken } = await chrome.storage.local.get('githubToken');
+      res = await deliverGitHub(payload, settings, typeof githubToken === 'string' ? githubToken : '');
+    } else {
+      res = await deliverGeneric(payload, settings, await getEndpointSecret());
+    }
     await chrome.storage.local.set({
       endpointLastSentAt: now,
       endpointLastAttemptAt: now,
       endpointLastStatus: 'ok',
       endpointLastError: '',
-      endpointLastHttpStatus: res.status
+      endpointLastHttpStatus: res.status,
+      endpointLastDetail: res.detail || ''
     });
-    console.log('[endpoint] reported (%s) HTTP %s in %s attempt(s)', reason, res.status, res.attempts);
-    return { ok: true, status: res.status, attempts: res.attempts };
+    console.log('[endpoint] reported (%s/%s) %s', reason, target.mode, res.detail || res.status);
+    return { ok: true, status: res.status, attempts: res.attempts, detail: res.detail || '' };
   } catch (err) {
     const message = String(err && err.message || err);
     await chrome.storage.local.set({

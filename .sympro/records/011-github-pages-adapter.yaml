@@ -1,0 +1,60 @@
+id: record-0011
+timestamp: 2026-06-13T18:00:00Z
+summary: >-
+  v0.3.1 adds a GitHub Pages delivery mode for the optional reporting
+  feature. Static homepages cannot receive a POST, so instead of a plain
+  request the extension commits the `citation.snapshot` JSON into the
+  user's own repository through the official GitHub Contents API: GET the
+  file to obtain its blob sha (404 means first write), then PUT with the
+  sha, refreshing the sha and retrying once on a 409 conflict. Content is
+  base64-encoded via TextEncoder because btoa alone throws on the
+  non-ASCII paper titles that are common in this dataset, and each path
+  segment is encoded separately so directory separators survive. The
+  transport layer was generalised into requestOnce/requestWithRetry so
+  both modes share timeout, bounded retry, and transient-only retry
+  policy. The GitHub token is stored under its own top-level key,
+  parallel to the existing endpoint secret, and is likewise excluded from
+  exported backups.
+participation_mode:
+  - implementation
+  - feature
+  - refactor
+participation_intensity: substantial
+autonomy_mode: human-directed
+artifacts:
+  - background.js
+  - options/options.html
+  - options/options.js
+  - manifest.json
+  - README.md
+  - PRIVACY.md
+  - store/edge/SUBMISSION.md
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User observed that many personal homepages are hosted on GitHub Pages
+    and that the GitHub Contents API cannot accept a plain data POST the
+    way a generic endpoint can, so a dedicated adapter was needed. User
+    also asked for conservative version numbering.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - automated_checks
+    - manual_review
+  checks:
+    - node --check background.js
+    - node --check options/options.js
+    - GitHub adapter suite (create / update / 409 conflict / error mapping / UTF-8)
+    - generic mode regression suite against a local HTTP server
+    - ./pack.sh

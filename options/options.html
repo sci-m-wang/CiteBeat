@@ -104,9 +104,71 @@
   </div>
 
   <div class="row">
-    <label for="endpointUrl">节点地址（Endpoint URL）</label>
-    <input id="endpointUrl" type="text" placeholder="https://example.com/api/citations">
-    <div class="hint">必须是完整的 <code>http://</code> 或 <code>https://</code> 地址。首次发送时浏览器会请求该域名的访问授权。</div>
+    <label>上报方式</label>
+    <div class="radio-group wrap">
+      <label><input type="radio" name="endpointMode" value="generic"> 自定义节点（POST JSON）</label>
+      <label><input type="radio" name="endpointMode" value="github"> GitHub Pages（提交到仓库）</label>
+    </div>
+    <div class="hint">主页托管在 GitHub Pages 时选后者：静态站点无法接收 POST，扩展会把 JSON 作为一次提交写进你的仓库。</div>
+  </div>
+
+  <div id="genericPanel">
+    <div class="row">
+      <label for="endpointUrl">节点地址（Endpoint URL）</label>
+      <input id="endpointUrl" type="text" placeholder="https://example.com/api/citations">
+      <div class="hint">必须是完整的 <code>http://</code> 或 <code>https://</code> 地址。首次发送时浏览器会请求该域名的访问授权。</div>
+    </div>
+
+    <div class="row">
+      <label for="endpointAuthType">鉴权方式</label>
+      <select id="endpointAuthType">
+        <option value="none">不鉴权</option>
+        <option value="bearer">Bearer Token</option>
+      </select>
+    </div>
+
+    <div id="endpointSecretRow" class="row hidden">
+      <label for="endpointSecret">Bearer Token</label>
+      <input id="endpointSecret" type="password" placeholder="仅保存在本机，不会写入备份文件" autocomplete="off">
+      <div class="hint">以 <code>Authorization: Bearer &lt;token&gt;</code> 发送。留空表示不修改已保存的值。</div>
+    </div>
+  </div>
+
+  <div id="githubPanel" class="hidden">
+    <div class="row">
+      <label for="githubOwner">用户名 / 组织</label>
+      <input id="githubOwner" type="text" placeholder="sci-m-wang">
+    </div>
+
+    <div class="row">
+      <label for="githubRepo">仓库名</label>
+      <input id="githubRepo" type="text" placeholder="sci-m-wang.github.io">
+    </div>
+
+    <div class="row">
+      <label for="githubBranch">分支</label>
+      <input id="githubBranch" type="text" placeholder="main" value="main">
+    </div>
+
+    <div class="row">
+      <label for="githubPath">文件路径</label>
+      <input id="githubPath" type="text" placeholder="data/citations.json" value="data/citations.json">
+      <div class="hint">相对仓库根目录的文件路径。写好后可在主页用 <code>fetch('/data/citations.json')</code> 读取。</div>
+    </div>
+
+    <div class="row">
+      <label for="githubCommitMessage">提交信息</label>
+      <input id="githubCommitMessage" type="text" placeholder="chore(citebeat): update citation snapshot">
+    </div>
+
+    <div class="row">
+      <label for="githubToken">GitHub Token</label>
+      <input id="githubToken" type="password" placeholder="仅保存在本机，不会写入备份文件" autocomplete="off">
+      <div class="hint">
+        建议用 <b>Fine-grained personal access token</b>，仅授权这一个仓库、权限只勾 <code>Contents: Read and write</code>。
+        留空表示不修改已保存的值。
+      </div>
+    </div>
   </div>
 
   <div class="row">
@@ -116,22 +178,8 @@
   </div>
 
   <div class="row">
-    <label for="endpointAuthType">鉴权方式</label>
-    <select id="endpointAuthType">
-      <option value="none">不鉴权</option>
-      <option value="bearer">Bearer Token</option>
-    </select>
-  </div>
-
-  <div id="endpointSecretRow" class="row hidden">
-    <label for="endpointSecret">Bearer Token</label>
-    <input id="endpointSecret" type="password" placeholder="仅保存在本机，不会写入备份文件" autocomplete="off">
-    <div class="hint">以 <code>Authorization: Bearer &lt;token&gt;</code> 发送。留空表示不修改已保存的值。</div>
-  </div>
-
-  <div class="row">
     <div class="button-row">
-      <button id="testEndpoint" type="button" class="secondary">测试节点</button>
+      <button id="testEndpoint" type="button" class="secondary">测试</button>
       <button id="sendNow" type="button" class="secondary">立即发送</button>
       <button id="previewSnapshot" type="button" class="secondary">预览快照</button>
       <button id="clearSecret" type="button" class="secondary">清除 Token</button>

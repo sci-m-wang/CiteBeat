@@ -118,7 +118,7 @@ Edge 条目后台有"权限使用说明"（justification）文本框，逐项填
 | `alarms` | 定时触发后台引用数据刷新与可选的上报检查 |
 | Host: `https://scholar.google.com/*` | 抓取用户 Google Scholar 作者主页的公开引用数据 |
 | Host: `https://api.semanticscholar.org/*` | 调用 Semantic Scholar 官方公开 Graph API |
-| Optional host: `https://*/*`, `http://*/*` | 可选功能：把用户本人的引用快照发送到**用户自己填写**的节点地址（如个人主页后端）。默认关闭；地址无法预知，故声明为通配。实际访问范围由浏览器在运行时逐域名向用户请求授权，用户不授权则不会发送。 |
+| Optional host: `https://*/*`, `http://*/*` | 可选功能：把用户本人的引用快照同步到**用户自己配置**的位置 —— 自填的节点地址，或用户自己的 GitHub 仓库（`api.github.com`，用于 GitHub Pages 主页）。默认关闭；地址无法预知，故声明为通配。实际访问范围由浏览器在运行时逐域名向用户请求授权，用户不授权则不会发送。 |
 
 > 通配 optional host 是本条目审核的关注点，请在"Notes to certification team"中一并说明（见第 9 节）。
 
@@ -150,27 +150,37 @@ The extension:
 About the broad optional_host_permissions ("https://*/*", "http://*/*"):
 
   The extension has an OPTIONAL, DISABLED-BY-DEFAULT feature that lets a
-  researcher push their own public citation metrics to their own personal
-  homepage backend, so the numbers can be rendered on their own website.
+  researcher publish their own public citation metrics to their own
+  personal homepage, so the numbers can be rendered on their own website.
 
-  The destination URL is entered by the user in the options page. We cannot
-  know that domain in advance, which is why the optional permission is
-  declared as a wildcard rather than a fixed host.
+  Two delivery modes, both fully user-configured:
+
+    1. Custom endpoint - POST the JSON to an http(s) URL the user types in.
+    2. GitHub Pages - a static site cannot receive a POST, so the extension
+       instead commits the JSON file into the user's OWN repository using
+       the official GitHub Contents API (https://api.github.com), with a
+       token the user creates themselves.
+
+  We cannot know the destination domain in advance, which is why the
+  optional permission is declared as a wildcard rather than a fixed host.
 
   Nothing is ever sent unless ALL of the following are true:
     1. The user ticks "enable reporting" in the options page
-    2. The user enters an absolute http(s) endpoint URL
+    2. The user configures a destination (endpoint URL, or repo + path)
     3. The user grants the runtime permission prompt for that exact origin
        (requested via chrome.permissions.request from a user gesture)
 
   The extension contains no hardcoded endpoint and never contacts any
   developer-operated or third-party server. The payload contains only the
   user's own public scholarly data (citations, h-index, i10-index, paper
-  titles and counts). An optional Bearer token for the user's own endpoint
-  is stored locally and excluded from exported backups.
+  titles and counts). Credentials (an optional Bearer token, or the user's
+  GitHub token) are stored under their own local keys, are excluded from
+  exported backups, and are sent only as request headers to the user's own
+  destination.
 
-  To verify without a server, use the "预览快照" (Preview snapshot) button
-  in the options page, which renders the exact JSON locally and sends nothing.
+  To verify without any server or repository, use the "预览快照" (Preview
+  snapshot) button in the options page, which renders the exact JSON
+  locally and sends nothing.
 
 Source code and privacy policy:
   https://github.com/sci-m-wang/CiteBeat

@@ -17,7 +17,7 @@
 - 📊 **引用趋势图**：弹窗内展示当前作者最近的总引用变化趋势
 - 🖼 **一键分享图**：生成 1200×630 PNG，展示引用增长、趋势、Top 论文和 CiteBeat 项目入口
 - 💽 **手动备份/恢复**：设置页可导出和导入本地数据备份，方便开发调试或迁移前保存历史
-- 🔗 **可选主页上报**：把引用快照 POST 到你自己配置的节点，用于个人主页展示（默认关闭）
+- 🔗 **可选主页上报**：把引用快照发送到你自己的节点，或直接提交到 GitHub Pages 仓库（默认关闭）
 - 💾 **数据仅本地存储**：默认所有数据保存在浏览器本地 `chrome.storage.local`，不会上传到任何服务器
 
 ## 安装
@@ -66,24 +66,18 @@ _（待上架后补充链接）_
 
 ## 主页数据上报（可选）
 
-用于把引用数据同步到你自己的个人主页后端。**默认关闭，不填地址就永远不会发送。**
+用于把引用数据同步到你自己的个人主页。**默认关闭，不配置就永远不会发送。** 支持两种方式：
 
-### 配置
+| 方式 | 适用场景 | 做法 |
+|---|---|---|
+| 自定义节点 | 主页有后端 / Serverless 函数 | POST `citation.snapshot` JSON |
+| GitHub Pages | 主页是静态站点 | 通过 Contents API 把 JSON 提交进仓库 |
 
-1. 设置页 → "主页数据上报" → 勾选"启用向自定义节点上报"
+### 方式一：自定义节点
+
+1. 设置页 → "主页数据上报" → 勾选启用 → 上报方式选"自定义节点"
 2. 填写节点地址，例如 `https://example.com/api/citations`
-3. 设置上报周期（天）；距上次成功上报满 N 天后，在下一次刷新时自动发送
-4. 需要鉴权时选 Bearer Token 并填入，会以 `Authorization: Bearer <token>` 发送
-5. 保存时浏览器会弹出该域名的授权提示，必须授权后才能发送
-
-### 按钮
-
-- **测试节点**：保存配置并立即发送一次，用于验证节点连通性
-- **立即发送**：忽略周期限制，马上推送一次快照
-- **预览快照**：只在本地生成 JSON 预览，不发送任何数据
-- **清除 Token**：删除本地保存的 Bearer Token
-
-### 请求格式
+3. 需要鉴权时选 Bearer Token 并填入，会以 `Authorization: Bearer <token>` 发送
 
 ```
 POST <你的节点地址>
@@ -92,12 +86,48 @@ X-CiteBeat-Schema: citation.snapshot/1
 Authorization: Bearer <token>   # 仅在选择 Bearer 时
 ```
 
+节点返回 2xx 视为成功。
+
+### 方式二：GitHub Pages
+
+静态站点没有后端可以接收 POST，所以扩展改为**把 JSON 作为一次提交写进你的仓库**，GitHub Pages 重新部署后主页即可读到。
+
+1. 上报方式选"GitHub Pages"
+2. 填用户名/组织、仓库名、分支（默认 `main`）、文件路径（默认 `data/citations.json`）
+3. 创建 Token：GitHub → Settings → Developer settings → **Fine-grained personal access token**
+   - Repository access：只选这一个仓库
+   - Permissions → Repository permissions → **Contents: Read and write**
+   - 其它权限都不需要
+4. 粘贴 Token → 点"测试" → 授权 `https://api.github.com/*`
+
+扩展会先 `GET` 该文件拿 `sha`（不存在则创建），再 `PUT` 提交。若期间有其他提交导致 `409`，会重新取 `sha` 再试一次。
+
+在主页里读取：
+
+```js
+const res = await fetch('/data/citations.json');
+const snap = await res.json();
+document.querySelector('#citations').textContent = snap.metrics.citations;
+document.querySelector('#hindex').textContent = snap.metrics.hIndex;
+```
+
+> 提交会计入仓库历史。建议把上报周期设为 1 天或更长，避免频繁提交刷屏。
+
+### 按钮
+
+- **测试**：保存配置并立即发送一次，用于验证连通性与权限
+- **立即发送**：忽略周期限制，马上推送一次
+- **预览快照**：只在本地生成 JSON 预览，不发送任何数据
+- **清除 Token**：删除当前模式下本地保存的凭据
+
+### 载荷格式
+
 ```json
 {
   "schema": "citation.snapshot",
   "schemaVersion": 1,
   "generatedAt": "2026-06-13T16:00:00.000Z",
-  "generator": { "name": "CiteBeat", "version": "0.3.0" },
+  "generator": { "name": "CiteBeat", "version": "0.3.1" },
   "source": {
     "provider": "scholar",
     "authorId": "xxxxxxxx",
@@ -113,13 +143,13 @@ Authorization: Bearer <token>   # 仅在选择 Bearer 时
 }
 ```
 
-节点返回 2xx 视为成功。超时 15 秒，失败最多重试 3 次（仅对超时、429 和 5xx 重试）。
+超时 15 秒，失败最多重试 3 次（仅对超时、429 和 5xx 重试）。
 
 ### 隐私边界
 
-- 目标地址完全由你填写，扩展不内置任何服务器
+- 目标完全由你填写，扩展不内置任何服务器
 - `optional_host_permissions` 声明为通配形式，因为无法预知你的域名；实际授权由浏览器逐域名弹窗确认
-- Bearer Token 单独存储，**不会写入导出的备份文件**
+- Bearer Token 和 GitHub Token 各自单独存储，**都不会写入导出的备份文件**
 - 可随时关闭上报、清除 Token，或在浏览器扩展设置里撤销域名授权
 
 ## 弹窗界面

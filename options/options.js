@@ -6,16 +6,24 @@ const DEFAULTS = {
   baselineMode: 'manual',
   baselineIntervalDays: 10,
   endpointEnabled: false,
+  endpointMode: 'generic',
   endpointUrl: '',
   endpointIntervalDays: 1,
-  endpointAuthType: 'none'
+  endpointAuthType: 'none',
+  githubOwner: '',
+  githubRepo: '',
+  githubBranch: 'main',
+  githubPath: 'data/citations.json',
+  githubCommitMessage: 'chore(citebeat): update citation snapshot'
 };
+
+const GITHUB_ORIGIN_PATTERN = 'https://api.github.com/*';
 
 const BACKUP_VERSION = 1;
 const STORAGE_SCHEMA_VERSION = 2;
 const HISTORY_LIMIT = 1000;
-// NOTE: `endpointSecret` is deliberately NOT part of the backup payload —
-// the token is a credential and must never leave the machine in a file.
+// NOTE: `endpointSecret` and `githubToken` are deliberately NOT part of the
+// backup payload — they are credentials and must never leave the machine.
 const BACKUP_DATA_KEYS = [
   'settings',
   'citations',
@@ -51,13 +59,24 @@ async function load() {
   updateBaselineIntervalVisibility();
 
   $('endpointEnabled').checked = !!s.endpointEnabled;
+  const endpointMode = s.endpointMode === 'github' ? 'github' : 'generic';
+  document.querySelectorAll('input[name=endpointMode]').forEach(el => {
+    el.checked = (el.value === endpointMode);
+  });
   $('endpointUrl').value = s.endpointUrl || '';
   $('endpointIntervalDays').value = s.endpointIntervalDays || 1;
   $('endpointAuthType').value = ['none', 'bearer'].includes(s.endpointAuthType)
     ? s.endpointAuthType
     : 'none';
-  // Never echo the stored token back into the DOM; blank means "keep current".
+  $('githubOwner').value = s.githubOwner || '';
+  $('githubRepo').value = s.githubRepo || '';
+  $('githubBranch').value = s.githubBranch || 'main';
+  $('githubPath').value = s.githubPath || 'data/citations.json';
+  $('githubCommitMessage').value = s.githubCommitMessage || DEFAULTS.githubCommitMessage;
+  // Never echo stored credentials back into the DOM; blank means "keep current".
   $('endpointSecret').value = '';
+  $('githubToken').value = '';
+  updateEndpointModeVisibility();
   updateEndpointSecretVisibility();
   await renderEndpointStatus();
 
@@ -86,12 +105,18 @@ async function renderEndpointStatus() {
     'endpointLastStatus',
     'endpointLastError',
     'endpointLastHttpStatus',
-    'endpointSecret'
+    'endpointLastDetail',
+    'endpointSecret',
+    'githubToken'
   ]);
-  const hasSecret = typeof stored.endpointSecret === 'string' && stored.endpointSecret.length > 0;
+  const mode = getSelectedMode();
+  const hasSecret = mode === 'github'
+    ? (typeof stored.githubToken === 'string' && stored.githubToken.length > 0)
+    : (typeof stored.endpointSecret === 'string' && stored.endpointSecret.length > 0);
   const parts = [];
   parts.push(`上次成功：${fmtTime(stored.endpointLastSentAt)}`);
-  if (stored.endpointLastHttpStatus) parts.push(`HTTP ${stored.endpointLastHttpStatus}`);
+  if (stored.endpointLastDetail) parts.push(stored.endpointLastDetail);
+  else if (stored.endpointLastHttpStatus) parts.push(`HTTP ${stored.endpointLastHttpStatus}`);
   parts.push(hasSecret ? 'Token：已保存' : 'Token：未设置');
   if (stored.endpointLastStatus === 'error' && stored.endpointLastError) {
     parts.push(`上次错误（${fmtTime(stored.endpointLastAttemptAt)}）：${stored.endpointLastError}`);
@@ -101,9 +126,76 @@ async function renderEndpointStatus() {
   setEndpointStatus(parts.join(' · '), stored.endpointLastStatus === 'ok' ? 'ok' : '');
 }
 
+function getSelectedMode() {
+  return document.querySelector('input[name=endpointMode]:checked')?.value === 'github'
+    ? 'github'
+    : 'generic';
+}
+
+function updateEndpointModeVisibility() {
+  const mode = getSelectedMode();
+  $('genericPanel').classList.toggle('hidden', mode !== 'generic');
+  $('githubPanel').classList.toggle('hidden', mode !== 'github');
+}
+
 function updateEndpointSecretVisibility() {
   const type = $('endpointAuthType').value;
   $('endpointSecretRow').classList.toggle('hidden', type !== 'bearer');
+}
+
+// Collect endpoint settings from the form, validating the active mode only.
+function readEndpointForm() {
+  const mode = getSelectedMode();
+  const values = {
+    endpointEnabled: $('endpointEnabled').checked,
+    endpointMode: mode,
+    endpointUrl: $('endpointUrl').value.trim(),
+    endpointIntervalDays: Math.max(1, parseInt($('endpointIntervalDays').value, 10) || 1),
+    endpointAuthType: $('endpointAuthType').value === 'bearer' ? 'bearer' : 'none',
+    githubOwner: $('githubOwner').value.trim(),
+    githubRepo: $('githubRepo').value.trim(),
+    githubBranch: $('githubBranch').value.trim() || 'main',
+    githubPath: $('githubPath').value.trim().replace(/^\/+/, ''),
+    githubCommitMessage: $('githubCommitMessage').value.trim() || DEFAULTS.githubCommitMessage
+  };
+
+  if (mode === 'github') {
+    if (!values.githubOwner) throw new Error('请填写 GitHub 用户名/组织');
+    if (!values.githubRepo) throw new Error('请填写 GitHub 仓库名');
+    if (!values.githubPath) throw new Error('请填写目标文件路径');
+    if (values.githubPath.endsWith('/')) throw new Error('目标路径必须是文件，不能以 / 结尾');
+    if (!/^[\w.-]+$/.test(values.githubOwner)) throw new Error('GitHub 用户名/组织含非法字符');
+    if (!/^[\w.-]+$/.test(values.githubRepo)) throw new Error('GitHub 仓库名含非法字符');
+  } else if (values.endpointUrl) {
+    originPatternFromUrl(values.endpointUrl); // throws on invalid URL
+  } else if (values.endpointEnabled) {
+    throw new Error('启用上报时必须填写节点地址');
+  }
+  return values;
+}
+
+// Credentials go to their own top-level keys, never into `settings`.
+function readCredentialPatch(mode) {
+  const patch = {};
+  if (mode === 'github') {
+    const token = $('githubToken').value;
+    if (token) patch.githubToken = token;
+  } else {
+    const secret = $('endpointSecret').value;
+    if ($('endpointAuthType').value === 'bearer' && secret) patch.endpointSecret = secret;
+  }
+  return patch;
+}
+
+function clearCredentialInputs() {
+  $('endpointSecret').value = '';
+  $('githubToken').value = '';
+}
+
+function requiredOriginPattern(values) {
+  return values.endpointMode === 'github'
+    ? GITHUB_ORIGIN_PATTERN
+    : originPatternFromUrl(values.endpointUrl);
 }
 
 function originPatternFromUrl(rawUrl) {
@@ -116,13 +208,7 @@ function originPatternFromUrl(rawUrl) {
 
 // Host permission must be requested from a user gesture, so it happens here
 // in the options page rather than in the service worker.
-async function ensureEndpointPermission(rawUrl) {
-  let pattern;
-  try {
-    pattern = originPatternFromUrl(rawUrl);
-  } catch (e) {
-    throw new Error(e && e.message || '节点地址不是合法 URL');
-  }
+async function ensureOriginPermission(pattern) {
   if (await chrome.permissions.contains({ origins: [pattern] })) return pattern;
   const granted = await chrome.permissions.request({ origins: [pattern] });
   if (!granted) throw new Error(`未授权访问 ${pattern}，无法上报`);
@@ -131,25 +217,13 @@ async function ensureEndpointPermission(rawUrl) {
 
 // Persist endpoint settings before any send so the worker reads current values.
 async function saveEndpointSettings() {
+  const values = readEndpointForm();
   const { settings } = await chrome.storage.local.get('settings');
   const current = { ...DEFAULTS, ...(settings || {}) };
-  const endpointUrl = $('endpointUrl').value.trim();
-  const endpointAuthType = $('endpointAuthType').value === 'bearer' ? 'bearer' : 'none';
-  const next = {
-    ...current,
-    endpointEnabled: $('endpointEnabled').checked,
-    endpointUrl,
-    endpointIntervalDays: Math.max(1, parseInt($('endpointIntervalDays').value, 10) || 1),
-    endpointAuthType
-  };
-  const patch = { settings: next };
-  const secret = $('endpointSecret').value;
-  if (endpointAuthType === 'bearer' && secret) {
-    patch.endpointSecret = secret;
-  }
+  const patch = { settings: { ...current, ...values }, ...readCredentialPatch(values.endpointMode) };
   await chrome.storage.local.set(patch);
-  $('endpointSecret').value = '';
-  return next;
+  clearCredentialInputs();
+  return values;
 }
 
 function setStatus(msg, isErr = false) {
@@ -233,6 +307,15 @@ function validateBackupSettings(settings) {
   if (!['none', 'bearer'].includes(endpointAuthType)) {
     throw new Error('备份中的鉴权方式不受支持');
   }
+  const endpointMode = settings.endpointMode || DEFAULTS.endpointMode;
+  if (!['generic', 'github'].includes(endpointMode)) {
+    throw new Error('备份中的上报方式不受支持');
+  }
+  for (const [key, label] of [['githubOwner', '用户名/组织'], ['githubRepo', '仓库名']]) {
+    if (settings[key] && !/^[\w.-]+$/.test(String(settings[key]))) {
+      throw new Error(`备份中的 GitHub ${label}含非法字符`);
+    }
+  }
   if (settings.endpointIntervalDays != null
     && (!Number.isFinite(Number(settings.endpointIntervalDays)) || Number(settings.endpointIntervalDays) < 1)) {
     throw new Error('备份中的上报周期不正确');
@@ -308,10 +391,6 @@ $('save').addEventListener('click', async () => {
   const periodMinutes = Math.max(1, parseInt($('periodMinutes').value, 10) || 30);
   const baselineMode = document.querySelector('input[name=baselineMode]:checked')?.value || 'manual';
   const baselineIntervalDays = Math.max(1, parseInt($('baselineIntervalDays').value, 10) || 10);
-  const endpointEnabled = $('endpointEnabled').checked;
-  const endpointUrl = $('endpointUrl').value.trim();
-  const endpointIntervalDays = Math.max(1, parseInt($('endpointIntervalDays').value, 10) || 1);
-  const endpointAuthType = $('endpointAuthType').value === 'bearer' ? 'bearer' : 'none';
 
   if (source === 'scholar' && !scholarId) {
     setStatus('请填写 Google Scholar user id', true); return;
@@ -319,20 +398,17 @@ $('save').addEventListener('click', async () => {
   if (source === 'semanticscholar' && !semanticScholarId) {
     setStatus('请填写 Semantic Scholar author id', true); return;
   }
-  if (endpointEnabled && !endpointUrl) {
-    setStatus('启用上报时必须填写节点地址', true); return;
-  }
-  if (endpointUrl) {
-    try {
-      originPatternFromUrl(endpointUrl);
-    } catch (e) {
-      setStatus('节点地址无效: ' + (e && e.message || e), true); return;
-    }
+
+  let endpointValues;
+  try {
+    endpointValues = readEndpointForm();
+  } catch (e) {
+    setStatus(String(e && e.message || e), true); return;
   }
   // Requesting permission needs the click gesture, so do it during save.
-  if (endpointEnabled && endpointUrl) {
+  if (endpointValues.endpointEnabled) {
     try {
-      await ensureEndpointPermission(endpointUrl);
+      await ensureOriginPermission(requiredOriginPattern(endpointValues));
     } catch (e) {
       setStatus(String(e && e.message || e), true); return;
     }
@@ -346,63 +422,52 @@ $('save').addEventListener('click', async () => {
       periodMinutes,
       baselineMode,
       baselineIntervalDays,
-      endpointEnabled,
-      endpointUrl,
-      endpointIntervalDays,
-      endpointAuthType
-    }
+      ...endpointValues
+    },
+    ...readCredentialPatch(endpointValues.endpointMode)
   };
-  const secret = $('endpointSecret').value;
-  if (endpointAuthType === 'bearer' && secret) {
-    patch.endpointSecret = secret;
-  }
   await chrome.storage.local.set(patch);
-  $('endpointSecret').value = '';
+  clearCredentialInputs();
   $('welcome').classList.remove('show');
   await renderEndpointStatus();
   setStatus('已保存，正在刷新…');
 });
 
-$('endpointAuthType').addEventListener('change', updateEndpointSecretVisibility);
-
-$('testEndpoint').addEventListener('click', async () => {
-  const url = $('endpointUrl').value.trim();
-  if (!url) { setEndpointStatus('请先填写节点地址', 'err'); return; }
-  setEndpointStatus('测试中…');
-  try {
-    await ensureEndpointPermission(url);
-    await saveEndpointSettings();
-    const res = await chrome.runtime.sendMessage({ type: 'sendSnapshot', reason: 'test' });
-    if (res && res.ok) {
-      setEndpointStatus(`测试成功：HTTP ${res.status}（${res.attempts} 次尝试）`, 'ok');
-    } else {
-      setEndpointStatus('测试失败: ' + (res && res.error || '未知错误'), 'err');
-    }
-  } catch (e) {
-    setEndpointStatus('测试失败: ' + (e && e.message || e), 'err');
-  } finally {
+document.querySelectorAll('input[name=endpointMode]').forEach(el => {
+  el.addEventListener('change', async () => {
+    updateEndpointModeVisibility();
     await renderEndpointStatus();
-  }
+  });
 });
 
-$('sendNow').addEventListener('click', async () => {
-  const url = $('endpointUrl').value.trim();
-  if (!url) { setEndpointStatus('请先填写节点地址', 'err'); return; }
-  setEndpointStatus('发送中…');
+$('endpointAuthType').addEventListener('change', updateEndpointSecretVisibility);
+
+// Shared path for the Test and Send-now buttons.
+async function runManualSend(reason, labels) {
+  setEndpointStatus(labels.busy);
   try {
-    await ensureEndpointPermission(url);
+    const values = readEndpointForm();
+    await ensureOriginPermission(requiredOriginPattern(values));
     await saveEndpointSettings();
-    const res = await chrome.runtime.sendMessage({ type: 'sendSnapshot', reason: 'manual' });
+    const res = await chrome.runtime.sendMessage({ type: 'sendSnapshot', reason });
     if (res && res.ok) {
-      setEndpointStatus(`发送成功：HTTP ${res.status}`, 'ok');
+      setEndpointStatus(`${labels.ok}：${res.detail || 'HTTP ' + res.status}`, 'ok');
     } else {
-      setEndpointStatus('发送失败: ' + (res && res.error || '未知错误'), 'err');
+      setEndpointStatus(`${labels.fail}: ` + (res && res.error || '未知错误'), 'err');
     }
   } catch (e) {
-    setEndpointStatus('发送失败: ' + (e && e.message || e), 'err');
+    setEndpointStatus(`${labels.fail}: ` + (e && e.message || e), 'err');
   } finally {
     await renderEndpointStatus();
   }
+}
+
+$('testEndpoint').addEventListener('click', () => {
+  runManualSend('test', { busy: '测试中…', ok: '测试成功', fail: '测试失败' });
+});
+
+$('sendNow').addEventListener('click', () => {
+  runManualSend('manual', { busy: '发送中…', ok: '发送成功', fail: '发送失败' });
 });
 
 $('previewSnapshot').addEventListener('click', async () => {
@@ -420,10 +485,11 @@ $('previewSnapshot').addEventListener('click', async () => {
 });
 
 $('clearSecret').addEventListener('click', async () => {
-  await chrome.storage.local.remove('endpointSecret');
-  $('endpointSecret').value = '';
+  const mode = getSelectedMode();
+  await chrome.storage.local.remove(mode === 'github' ? 'githubToken' : 'endpointSecret');
+  clearCredentialInputs();
   await renderEndpointStatus();
-  setEndpointStatus('已清除本地保存的 Token', 'ok');
+  setEndpointStatus(mode === 'github' ? '已清除本地保存的 GitHub Token' : '已清除本地保存的 Token', 'ok');
 });
 
 $('refresh').addEventListener('click', async () => {
