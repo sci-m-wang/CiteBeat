@@ -45,6 +45,9 @@
     }
     .hint.ok { color: #0a7a2f; }
     .hint.err { color: #b00020; }
+    .hint a { color: #1e4fc2; text-decoration: none; }
+    .hint a:hover { text-decoration: underline; }
+    .hint .sep { color: #bbb; margin: 0 6px; }
   </style>
 </head>
 <body>
@@ -165,8 +168,13 @@
       <label for="githubToken">GitHub Token</label>
       <input id="githubToken" type="password" placeholder="仅保存在本机，不会写入备份文件" autocomplete="off">
       <div class="hint">
-        建议用 <b>Fine-grained personal access token</b>，仅授权这一个仓库、权限只勾 <code>Contents: Read and write</code>。
-        留空表示不修改已保存的值。
+        建议用 <b>Fine-grained personal access token</b>，仅授权这一个仓库、权限只勾
+        <code>Contents: Read and write</code>。留空表示不修改已保存的值。
+      </div>
+      <div class="hint">
+        <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">前往 GitHub 创建 Token ↗</a>
+        <span class="sep">·</span>
+        <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">管理已有 Token ↗</a>
       </div>
     </div>
   </div>
