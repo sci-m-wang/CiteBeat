@@ -17,7 +17,8 @@
 - 📊 **引用趋势图**：弹窗内展示当前作者最近的总引用变化趋势
 - 🖼 **一键分享图**：生成 1200×630 PNG，展示引用增长、趋势、Top 论文和 CiteBeat 项目入口
 - 💽 **手动备份/恢复**：设置页可导出和导入本地数据备份，方便开发调试或迁移前保存历史
-- 💾 **数据仅本地存储**：所有数据保存在浏览器本地 `chrome.storage.local`，不会上传到任何服务器
+- 🔗 **可选主页上报**：把引用快照 POST 到你自己配置的节点，用于个人主页展示（默认关闭）
+- 💾 **数据仅本地存储**：默认所有数据保存在浏览器本地 `chrome.storage.local`，不会上传到任何服务器
 
 ## 安装
 
@@ -63,6 +64,64 @@ _（待上架后补充链接）_
 - **降级展示**：趋势不足 2 条时显示 `Trend building`；没有 Top 论文时显示占位说明；未成功刷新过时提示先刷新
 - **本地生成**：Canvas 和二维码都在浏览器本地生成，不调用外部图片或二维码服务
 
+## 主页数据上报（可选）
+
+用于把引用数据同步到你自己的个人主页后端。**默认关闭，不填地址就永远不会发送。**
+
+### 配置
+
+1. 设置页 → "主页数据上报" → 勾选"启用向自定义节点上报"
+2. 填写节点地址，例如 `https://example.com/api/citations`
+3. 设置上报周期（天）；距上次成功上报满 N 天后，在下一次刷新时自动发送
+4. 需要鉴权时选 Bearer Token 并填入，会以 `Authorization: Bearer <token>` 发送
+5. 保存时浏览器会弹出该域名的授权提示，必须授权后才能发送
+
+### 按钮
+
+- **测试节点**：保存配置并立即发送一次，用于验证节点连通性
+- **立即发送**：忽略周期限制，马上推送一次快照
+- **预览快照**：只在本地生成 JSON 预览，不发送任何数据
+- **清除 Token**：删除本地保存的 Bearer Token
+
+### 请求格式
+
+```
+POST <你的节点地址>
+Content-Type: application/json
+X-CiteBeat-Schema: citation.snapshot/1
+Authorization: Bearer <token>   # 仅在选择 Bearer 时
+```
+
+```json
+{
+  "schema": "citation.snapshot",
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-13T16:00:00.000Z",
+  "generator": { "name": "CiteBeat", "version": "0.3.0" },
+  "source": {
+    "provider": "scholar",
+    "authorId": "xxxxxxxx",
+    "profileUrl": "https://scholar.google.com/citations?user=xxxxxxxx",
+    "fetchedAt": "2026-06-13T15:58:00.000Z"
+  },
+  "metrics": { "citations": 571, "hIndex": 12, "i10Index": 15, "paperCount": 40 },
+  "period": { "mode": "manual", "startedAt": "2026-06-01T00:00:00.000Z", "citationDelta": 8 },
+  "papers": [
+    { "id": "xxx", "title": "论文标题", "citations": 42, "delta": 2, "url": "https://..." }
+  ],
+  "trend": [ { "at": "2026-06-10T00:00:00.000Z", "citations": 563 } ]
+}
+```
+
+节点返回 2xx 视为成功。超时 15 秒，失败最多重试 3 次（仅对超时、429 和 5xx 重试）。
+
+### 隐私边界
+
+- 目标地址完全由你填写，扩展不内置任何服务器
+- `optional_host_permissions` 声明为通配形式，因为无法预知你的域名；实际授权由浏览器逐域名弹窗确认
+- Bearer Token 单独存储，**不会写入导出的备份文件**
+- 可随时关闭上报、清除 Token，或在浏览器扩展设置里撤销域名授权
+
 ## 弹窗界面
 
 - **总引用**：来自当前数据源的最新总数
@@ -79,12 +138,14 @@ _（待上架后补充链接）_
 
 | 权限 | 用途 |
 |---|---|
-| `alarms` | 创建周期性刷新任务 |
+| `alarms` | 创建周期性刷新任务与可选的上报检查 |
 | `storage` | 本地保存作者 ID、引用快照、统计周期起点、历史摘要和备份恢复数据 |
 | `https://scholar.google.com/*` | 抓取本人公开的 Google Scholar 个人页 |
 | `https://api.semanticscholar.org/*` | 调用 Semantic Scholar 官方 Graph API |
+| `optional_host_permissions` | 仅在启用上报并授权后，向你自填的节点地址发送快照 |
 
-扩展不会读取其他任何页面，不会与第三方服务器通信，也不会收集任何用户识别信息。详见 [PRIVACY.md](PRIVACY.md)。
+扩展不会读取其他任何页面，不会与第三方服务器通信，也不会收集任何用户识别信息。
+唯一的对外发送是你主动配置并授权的上报节点。详见 [PRIVACY.md](PRIVACY.md)。
 
 ## 截图
 

@@ -1,4 +1,4 @@
-# Edge Add-ons 提交材料 · CiteBeat v0.1.0
+# Edge Add-ons 提交材料 · CiteBeat
 
 控制台：https://partner.microsoft.com/dashboard/microsoftedge
 
@@ -17,7 +17,7 @@ Edge Add-ons 商店**免费**，不收注册费。审核周期通常 1-7 天。
 
 ## 2. 上传扩展包
 
-- 扩展包：`dist/citebeat-0.1.0.zip`（如无，运行 `./pack.sh` 生成）
+- 扩展包：`dist/citebeat-<version>.zip`（运行 `./pack.sh` 生成）
 
 上传后进入条目编辑页，按左侧菜单逐项填。
 
@@ -38,7 +38,7 @@ Edge Add-ons 商店**免费**，不收注册费。审核周期通常 1-7 天。
 - **Privacy policy URL**: `https://sci-m-wang.github.io/CiteBeat/privacy/`
 - **Website**: `https://github.com/sci-m-wang/CiteBeat`
 - **Support contact**: GitHub Issues `https://github.com/sci-m-wang/CiteBeat/issues`
-- **是否收集数据 (Data collection)**: **No**
+- **是否收集数据 (Data collection)**: **No** — 开发者不接收任何数据。可选上报功能的目标地址由用户自填，数据只发往用户自己的服务器。
 
 ---
 
@@ -76,10 +76,11 @@ Semantic Scholar 上的论文引用变化。
 
 隐私与许可
 ━━━━━━━━━━━━━━━
-• 所有数据本地存储（浏览器 storage），不上传任何服务器
-• 仅访问 scholar.google.com 和 api.semanticscholar.org
+• 默认所有数据本地存储（浏览器 storage），不上传任何服务器
+• 默认仅访问 scholar.google.com 和 api.semanticscholar.org
+• 可选功能：可把引用快照发送到你自己填写的节点地址，默认关闭，需逐域名授权
 • 不收集任何用户识别信息
-• MIT 开源协议，源码公开于 GitHub
+• 开源协议，源码公开于 GitHub
 
 开源地址：https://github.com/sci-m-wang/CiteBeat
 ```
@@ -114,10 +115,12 @@ Edge 条目后台有"权限使用说明"（justification）文本框，逐项填
 | 权限 | 说明 |
 |---|---|
 | `storage` | 在浏览器本地保存引用基线与用户设置 |
-| `alarms` | 定时触发后台引用数据刷新 |
-| `notifications` | 检测到引用增长时向用户弹出系统通知 |
+| `alarms` | 定时触发后台引用数据刷新与可选的上报检查 |
 | Host: `https://scholar.google.com/*` | 抓取用户 Google Scholar 作者主页的公开引用数据 |
 | Host: `https://api.semanticscholar.org/*` | 调用 Semantic Scholar 官方公开 Graph API |
+| Optional host: `https://*/*`, `http://*/*` | 可选功能：把用户本人的引用快照发送到**用户自己填写**的节点地址（如个人主页后端）。默认关闭；地址无法预知，故声明为通配。实际访问范围由浏览器在运行时逐域名向用户请求授权，用户不授权则不会发送。 |
+
+> 通配 optional host 是本条目审核的关注点，请在"Notes to certification team"中一并说明（见第 9 节）。
 
 ---
 
@@ -139,10 +142,35 @@ For testing:
   Semantic Scholar ID example: "1741101"
 
 The extension:
-  - Does NOT collect or transmit any user data
+  - Does NOT collect or transmit any user data to the developer
   - Stores baselines in chrome.storage.local only
   - Accesses only scholar.google.com (public author pages) and
-    api.semanticscholar.org (official public API)
+    api.semanticscholar.org (official public API) by default
+
+About the broad optional_host_permissions ("https://*/*", "http://*/*"):
+
+  The extension has an OPTIONAL, DISABLED-BY-DEFAULT feature that lets a
+  researcher push their own public citation metrics to their own personal
+  homepage backend, so the numbers can be rendered on their own website.
+
+  The destination URL is entered by the user in the options page. We cannot
+  know that domain in advance, which is why the optional permission is
+  declared as a wildcard rather than a fixed host.
+
+  Nothing is ever sent unless ALL of the following are true:
+    1. The user ticks "enable reporting" in the options page
+    2. The user enters an absolute http(s) endpoint URL
+    3. The user grants the runtime permission prompt for that exact origin
+       (requested via chrome.permissions.request from a user gesture)
+
+  The extension contains no hardcoded endpoint and never contacts any
+  developer-operated or third-party server. The payload contains only the
+  user's own public scholarly data (citations, h-index, i10-index, paper
+  titles and counts). An optional Bearer token for the user's own endpoint
+  is stored locally and excluded from exported backups.
+
+  To verify without a server, use the "预览快照" (Preview snapshot) button
+  in the options page, which renders the exact JSON locally and sends nothing.
 
 Source code and privacy policy:
   https://github.com/sci-m-wang/CiteBeat

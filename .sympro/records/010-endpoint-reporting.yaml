@@ -1,0 +1,60 @@
+id: record-0010
+timestamp: 2026-06-13T17:00:00Z
+summary: >-
+  v0.3.0 adds optional homepage/endpoint reporting. Scholar and Semantic
+  Scholar fetches now also resolve h-index and i10-index (parsed from the
+  Scholar stats table or the S2 author API, with locally computed
+  fallbacks). A standard `citation.snapshot` JSON payload is assembled
+  from local state only and can be POSTed to a user-supplied endpoint
+  with timeout, bounded retry, interval control, and manual send/test.
+  Host access is declared as wildcard optional_host_permissions because
+  the destination domain is unknowable in advance; the actual grant is
+  requested per-origin from a user gesture in the options page. The
+  optional Bearer token is stored under a separate top-level storage key
+  so it never enters exported backups or the snapshot payload.
+participation_mode:
+  - implementation
+  - feature
+participation_intensity: substantial
+autonomy_mode: human-directed
+artifacts:
+  - manifest.json
+  - background.js
+  - options/options.html
+  - options/options.js
+  - README.md
+  - PRIVACY.md
+  - store/edge/SUBMISSION.md
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User requested adapting CiteBeat so a personal homepage can consume
+    Google Scholar data: dynamic optional_host_permissions with no fixed
+    domain, h-index/i10-index parsing, a standard citation.snapshot JSON,
+    generic HTTP POST with timeout/retry/interval/manual send, options UI
+    for endpoint URL, interval, optional bearer token, test and send-now
+    controls with status display, separate secret storage, and privacy
+    and store documentation stating data only goes to the user's own
+    configured endpoint.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - automated_checks
+    - manual_review
+  checks:
+    - node --check background.js
+    - node --check options/options.js
+    - node --check popup/popup.js
+    - node --check share/share.js
+    - ./pack.sh

@@ -37,6 +37,14 @@
     }
     .welcome.show { display: block; }
     .hidden { display: none; }
+    .row label.inline { font-weight: 400; display: flex; align-items: center; gap: 8px; }
+    .preview {
+      margin-top: 10px; padding: 10px; max-height: 260px; overflow: auto;
+      background: #f7f7f9; border: 1px solid #e3e3e6; border-radius: 6px;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre;
+    }
+    .hint.ok { color: #0a7a2f; }
+    .hint.err { color: #b00020; }
   </style>
 </head>
 <body>
@@ -85,6 +93,51 @@
   <div id="baselineIntervalRow" class="row hidden">
     <label for="baselineIntervalDays">自动开始间隔（天）</label>
     <input id="baselineIntervalDays" type="number" min="1" step="1" value="10">
+  </div>
+
+  <hr>
+
+  <h2>主页数据上报（可选）</h2>
+  <div class="row">
+    <label class="inline"><input id="endpointEnabled" type="checkbox"> 启用向自定义节点上报</label>
+    <div class="hint">默认关闭。启用后，扩展会按下面的周期把引用快照 POST 到你自己填写的地址；不填就永远不会发送。</div>
+  </div>
+
+  <div class="row">
+    <label for="endpointUrl">节点地址（Endpoint URL）</label>
+    <input id="endpointUrl" type="text" placeholder="https://example.com/api/citations">
+    <div class="hint">必须是完整的 <code>http://</code> 或 <code>https://</code> 地址。首次发送时浏览器会请求该域名的访问授权。</div>
+  </div>
+
+  <div class="row">
+    <label for="endpointIntervalDays">上报周期（天）</label>
+    <input id="endpointIntervalDays" type="number" min="1" step="1" value="1">
+    <div class="hint">距上次成功上报满 N 天后，在下一次刷新时发送。手动发送不受此限制。</div>
+  </div>
+
+  <div class="row">
+    <label for="endpointAuthType">鉴权方式</label>
+    <select id="endpointAuthType">
+      <option value="none">不鉴权</option>
+      <option value="bearer">Bearer Token</option>
+    </select>
+  </div>
+
+  <div id="endpointSecretRow" class="row hidden">
+    <label for="endpointSecret">Bearer Token</label>
+    <input id="endpointSecret" type="password" placeholder="仅保存在本机，不会写入备份文件" autocomplete="off">
+    <div class="hint">以 <code>Authorization: Bearer &lt;token&gt;</code> 发送。留空表示不修改已保存的值。</div>
+  </div>
+
+  <div class="row">
+    <div class="button-row">
+      <button id="testEndpoint" type="button" class="secondary">测试节点</button>
+      <button id="sendNow" type="button" class="secondary">立即发送</button>
+      <button id="previewSnapshot" type="button" class="secondary">预览快照</button>
+      <button id="clearSecret" type="button" class="secondary">清除 Token</button>
+    </div>
+    <div id="endpointStatus" class="hint"></div>
+    <pre id="snapshotPreview" class="preview hidden"></pre>
   </div>
 
   <hr>

@@ -4,15 +4,22 @@ const DEFAULTS = {
   semanticScholarId: '',
   periodMinutes: 30,
   baselineMode: 'manual',
-  baselineIntervalDays: 10
+  baselineIntervalDays: 10,
+  endpointEnabled: false,
+  endpointUrl: '',
+  endpointIntervalDays: 1,
+  endpointAuthType: 'none'
 };
 
 const BACKUP_VERSION = 1;
-const STORAGE_SCHEMA_VERSION = 1;
+const STORAGE_SCHEMA_VERSION = 2;
 const HISTORY_LIMIT = 1000;
+// NOTE: `endpointSecret` is deliberately NOT part of the backup payload —
+// the token is a credential and must never leave the machine in a file.
 const BACKUP_DATA_KEYS = [
   'settings',
   'citations',
+  'metrics',
   'currentPapers',
   'currentPapersKey',
   'baselinePapers',
@@ -43,10 +50,106 @@ async function load() {
   $('baselineIntervalDays').value = s.baselineIntervalDays || 10;
   updateBaselineIntervalVisibility();
 
+  $('endpointEnabled').checked = !!s.endpointEnabled;
+  $('endpointUrl').value = s.endpointUrl || '';
+  $('endpointIntervalDays').value = s.endpointIntervalDays || 1;
+  $('endpointAuthType').value = ['none', 'bearer'].includes(s.endpointAuthType)
+    ? s.endpointAuthType
+    : 'none';
+  // Never echo the stored token back into the DOM; blank means "keep current".
+  $('endpointSecret').value = '';
+  updateEndpointSecretVisibility();
+  await renderEndpointStatus();
+
   // Show welcome banner if nothing configured yet.
   if (!s.scholarId && !s.semanticScholarId) {
     $('welcome').classList.add('show');
   }
+}
+
+function setEndpointStatus(msg, kind = '') {
+  const el = $('endpointStatus');
+  el.textContent = msg;
+  el.className = 'hint' + (kind ? ' ' + kind : '');
+}
+
+function fmtTime(ts) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  return new Date(n).toLocaleString();
+}
+
+async function renderEndpointStatus() {
+  const stored = await chrome.storage.local.get([
+    'endpointLastSentAt',
+    'endpointLastAttemptAt',
+    'endpointLastStatus',
+    'endpointLastError',
+    'endpointLastHttpStatus',
+    'endpointSecret'
+  ]);
+  const hasSecret = typeof stored.endpointSecret === 'string' && stored.endpointSecret.length > 0;
+  const parts = [];
+  parts.push(`上次成功：${fmtTime(stored.endpointLastSentAt)}`);
+  if (stored.endpointLastHttpStatus) parts.push(`HTTP ${stored.endpointLastHttpStatus}`);
+  parts.push(hasSecret ? 'Token：已保存' : 'Token：未设置');
+  if (stored.endpointLastStatus === 'error' && stored.endpointLastError) {
+    parts.push(`上次错误（${fmtTime(stored.endpointLastAttemptAt)}）：${stored.endpointLastError}`);
+    setEndpointStatus(parts.join(' · '), 'err');
+    return;
+  }
+  setEndpointStatus(parts.join(' · '), stored.endpointLastStatus === 'ok' ? 'ok' : '');
+}
+
+function updateEndpointSecretVisibility() {
+  const type = $('endpointAuthType').value;
+  $('endpointSecretRow').classList.toggle('hidden', type !== 'bearer');
+}
+
+function originPatternFromUrl(rawUrl) {
+  const url = new URL(rawUrl);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('节点地址必须以 http:// 或 https:// 开头');
+  }
+  return `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/*`;
+}
+
+// Host permission must be requested from a user gesture, so it happens here
+// in the options page rather than in the service worker.
+async function ensureEndpointPermission(rawUrl) {
+  let pattern;
+  try {
+    pattern = originPatternFromUrl(rawUrl);
+  } catch (e) {
+    throw new Error(e && e.message || '节点地址不是合法 URL');
+  }
+  if (await chrome.permissions.contains({ origins: [pattern] })) return pattern;
+  const granted = await chrome.permissions.request({ origins: [pattern] });
+  if (!granted) throw new Error(`未授权访问 ${pattern}，无法上报`);
+  return pattern;
+}
+
+// Persist endpoint settings before any send so the worker reads current values.
+async function saveEndpointSettings() {
+  const { settings } = await chrome.storage.local.get('settings');
+  const current = { ...DEFAULTS, ...(settings || {}) };
+  const endpointUrl = $('endpointUrl').value.trim();
+  const endpointAuthType = $('endpointAuthType').value === 'bearer' ? 'bearer' : 'none';
+  const next = {
+    ...current,
+    endpointEnabled: $('endpointEnabled').checked,
+    endpointUrl,
+    endpointIntervalDays: Math.max(1, parseInt($('endpointIntervalDays').value, 10) || 1),
+    endpointAuthType
+  };
+  const patch = { settings: next };
+  const secret = $('endpointSecret').value;
+  if (endpointAuthType === 'bearer' && secret) {
+    patch.endpointSecret = secret;
+  }
+  await chrome.storage.local.set(patch);
+  $('endpointSecret').value = '';
+  return next;
 }
 
 function setStatus(msg, isErr = false) {
@@ -126,6 +229,21 @@ function validateBackupSettings(settings) {
     && (!Number.isFinite(Number(settings.baselineIntervalDays)) || Number(settings.baselineIntervalDays) < 1)) {
     throw new Error('备份中的自动周期天数不正确');
   }
+  const endpointAuthType = settings.endpointAuthType || DEFAULTS.endpointAuthType;
+  if (!['none', 'bearer'].includes(endpointAuthType)) {
+    throw new Error('备份中的鉴权方式不受支持');
+  }
+  if (settings.endpointIntervalDays != null
+    && (!Number.isFinite(Number(settings.endpointIntervalDays)) || Number(settings.endpointIntervalDays) < 1)) {
+    throw new Error('备份中的上报周期不正确');
+  }
+  if (settings.endpointUrl) {
+    try {
+      originPatternFromUrl(String(settings.endpointUrl));
+    } catch (_) {
+      throw new Error('备份中的节点地址不是合法 URL');
+    }
+  }
 }
 
 function parseCiteBeatBackup(raw) {
@@ -190,6 +308,10 @@ $('save').addEventListener('click', async () => {
   const periodMinutes = Math.max(1, parseInt($('periodMinutes').value, 10) || 30);
   const baselineMode = document.querySelector('input[name=baselineMode]:checked')?.value || 'manual';
   const baselineIntervalDays = Math.max(1, parseInt($('baselineIntervalDays').value, 10) || 10);
+  const endpointEnabled = $('endpointEnabled').checked;
+  const endpointUrl = $('endpointUrl').value.trim();
+  const endpointIntervalDays = Math.max(1, parseInt($('endpointIntervalDays').value, 10) || 1);
+  const endpointAuthType = $('endpointAuthType').value === 'bearer' ? 'bearer' : 'none';
 
   if (source === 'scholar' && !scholarId) {
     setStatus('请填写 Google Scholar user id', true); return;
@@ -197,19 +319,111 @@ $('save').addEventListener('click', async () => {
   if (source === 'semanticscholar' && !semanticScholarId) {
     setStatus('请填写 Semantic Scholar author id', true); return;
   }
+  if (endpointEnabled && !endpointUrl) {
+    setStatus('启用上报时必须填写节点地址', true); return;
+  }
+  if (endpointUrl) {
+    try {
+      originPatternFromUrl(endpointUrl);
+    } catch (e) {
+      setStatus('节点地址无效: ' + (e && e.message || e), true); return;
+    }
+  }
+  // Requesting permission needs the click gesture, so do it during save.
+  if (endpointEnabled && endpointUrl) {
+    try {
+      await ensureEndpointPermission(endpointUrl);
+    } catch (e) {
+      setStatus(String(e && e.message || e), true); return;
+    }
+  }
 
-  await chrome.storage.local.set({
+  const patch = {
     settings: {
       source,
       scholarId,
       semanticScholarId,
       periodMinutes,
       baselineMode,
-      baselineIntervalDays
+      baselineIntervalDays,
+      endpointEnabled,
+      endpointUrl,
+      endpointIntervalDays,
+      endpointAuthType
     }
-  });
+  };
+  const secret = $('endpointSecret').value;
+  if (endpointAuthType === 'bearer' && secret) {
+    patch.endpointSecret = secret;
+  }
+  await chrome.storage.local.set(patch);
+  $('endpointSecret').value = '';
   $('welcome').classList.remove('show');
+  await renderEndpointStatus();
   setStatus('已保存，正在刷新…');
+});
+
+$('endpointAuthType').addEventListener('change', updateEndpointSecretVisibility);
+
+$('testEndpoint').addEventListener('click', async () => {
+  const url = $('endpointUrl').value.trim();
+  if (!url) { setEndpointStatus('请先填写节点地址', 'err'); return; }
+  setEndpointStatus('测试中…');
+  try {
+    await ensureEndpointPermission(url);
+    await saveEndpointSettings();
+    const res = await chrome.runtime.sendMessage({ type: 'sendSnapshot', reason: 'test' });
+    if (res && res.ok) {
+      setEndpointStatus(`测试成功：HTTP ${res.status}（${res.attempts} 次尝试）`, 'ok');
+    } else {
+      setEndpointStatus('测试失败: ' + (res && res.error || '未知错误'), 'err');
+    }
+  } catch (e) {
+    setEndpointStatus('测试失败: ' + (e && e.message || e), 'err');
+  } finally {
+    await renderEndpointStatus();
+  }
+});
+
+$('sendNow').addEventListener('click', async () => {
+  const url = $('endpointUrl').value.trim();
+  if (!url) { setEndpointStatus('请先填写节点地址', 'err'); return; }
+  setEndpointStatus('发送中…');
+  try {
+    await ensureEndpointPermission(url);
+    await saveEndpointSettings();
+    const res = await chrome.runtime.sendMessage({ type: 'sendSnapshot', reason: 'manual' });
+    if (res && res.ok) {
+      setEndpointStatus(`发送成功：HTTP ${res.status}`, 'ok');
+    } else {
+      setEndpointStatus('发送失败: ' + (res && res.error || '未知错误'), 'err');
+    }
+  } catch (e) {
+    setEndpointStatus('发送失败: ' + (e && e.message || e), 'err');
+  } finally {
+    await renderEndpointStatus();
+  }
+});
+
+$('previewSnapshot').addEventListener('click', async () => {
+  const pre = $('snapshotPreview');
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'previewSnapshot' });
+    if (!res || !res.ok) throw new Error(res && res.error || '无法生成快照');
+    pre.textContent = JSON.stringify(res.snapshot, null, 2);
+    pre.classList.remove('hidden');
+    setEndpointStatus('已生成本地预览，未发送任何数据', 'ok');
+  } catch (e) {
+    pre.classList.add('hidden');
+    setEndpointStatus('预览失败: ' + (e && e.message || e), 'err');
+  }
+});
+
+$('clearSecret').addEventListener('click', async () => {
+  await chrome.storage.local.remove('endpointSecret');
+  $('endpointSecret').value = '';
+  await renderEndpointStatus();
+  setEndpointStatus('已清除本地保存的 Token', 'ok');
 });
 
 $('refresh').addEventListener('click', async () => {

@@ -8,14 +8,30 @@ const DEFAULT_SETTINGS = {
   semanticScholarId: '',      // Semantic Scholar author id (user must set in options)
   periodMinutes: 30,
   baselineMode: 'manual',     // 'manual' | 'weekly' | 'monthly' | 'interval'
-  baselineIntervalDays: 10
+  baselineIntervalDays: 10,
+  // --- Optional homepage/endpoint reporting ---
+  endpointEnabled: false,     // master switch; off by default
+  endpointUrl: '',            // user-provided absolute http(s) URL
+  endpointIntervalDays: 1,    // how often the snapshot is pushed
+  endpointAuthType: 'none'    // 'none' | 'bearer'
 };
 
 const HISTORY_LIMIT = 1000;
 const HISTORY_CHANGE_LIMIT = 10;
-const STORAGE_SCHEMA_VERSION = 1;
+const STORAGE_SCHEMA_VERSION = 2;
 const PAPER_COUNT_DROP_MIN = 20;
 const PAPER_COUNT_DROP_RATIO = 0.7;
+
+// --- Endpoint reporting ---
+const SNAPSHOT_SCHEMA = 'citation.snapshot';
+const SNAPSHOT_SCHEMA_VERSION = 1;
+const SNAPSHOT_PAPER_LIMIT = 200;
+const SNAPSHOT_TREND_LIMIT = 60;
+const ENDPOINT_TIMEOUT_MS = 15000;
+const ENDPOINT_MAX_ATTEMPTS = 3;
+const ENDPOINT_RETRY_BASE_MS = 1500;
+const ENDPOINT_CHECK_ALARM = 'endpointReport';
+const ENDPOINT_CHECK_MINUTES = 60;
 
 // ---------- Storage helpers ----------
 async function ensureStorageSchema() {
@@ -62,9 +78,10 @@ async function fetchScholar(userId) {
   if (!firstRes.ok) throw new Error(`Google Scholar HTTP ${firstRes.status}`);
   const firstHtml = await firstRes.text();
 
-  // Total citations (first gsc_rsb_std cell = all-time total)
-  const totalMatch = firstHtml.match(/<td[^>]*class="gsc_rsb_std"[^>]*>([\d,]+)<\/td>/i);
-  const total = totalMatch ? totalMatch[1].replace(/,/g, '') : null;
+  // The right-hand stats table lists, in order:
+  //   Citations(all, since) / h-index(all, since) / i10-index(all, since)
+  const stats = parseScholarStats(firstHtml);
+  const total = stats.citations == null ? null : String(stats.citations);
 
   const papers = {};
   parseScholarRows(firstHtml, papers);
@@ -89,9 +106,36 @@ async function fetchScholar(userId) {
 
   const fetched = Object.keys(papers).length;
   const summed = sumCitations(papers);
-  console.log('[Scholar] total=%s, sum(papers)=%s, papers fetched=%s', total, summed, fetched);
+  // Fall back to locally computed indices when the profile markup changes.
+  const metrics = {
+    hIndex: stats.hIndex != null ? stats.hIndex : computeHIndex(papers),
+    i10Index: stats.i10Index != null ? stats.i10Index : computeI10Index(papers),
+    hIndexSource: stats.hIndex != null ? 'profile' : 'computed',
+    i10IndexSource: stats.i10Index != null ? 'profile' : 'computed'
+  };
+  console.log('[Scholar] total=%s, sum(papers)=%s, papers fetched=%s, h=%s, i10=%s',
+    total, summed, fetched, metrics.hIndex, metrics.i10Index);
 
-  return { total: total ?? String(summed), papers };
+  return { total: total ?? String(summed), papers, metrics };
+}
+
+function parseScholarStats(html) {
+  // Grab the stats table first so unrelated numbers elsewhere on the page
+  // cannot shift the cell ordering.
+  const table = html.match(/<table[^>]*id="gsc_rsb_st"[^>]*>([\s\S]*?)<\/table>/i);
+  const scope = table ? table[1] : html;
+  const cells = [];
+  const cellRe = /<td[^>]*class="[^"]*gsc_rsb_std[^"]*"[^>]*>([\s\S]*?)<\/td>/gi;
+  let m;
+  while ((m = cellRe.exec(scope)) !== null) {
+    cells.push(parseTotal(stripTags(decodeHtml(m[1])).trim()));
+  }
+  // Columns are [all, since-YYYY] per row, so all-time values are even indices.
+  return {
+    citations: cells.length > 0 ? cells[0] : null,
+    hIndex: cells.length > 2 ? cells[2] : null,
+    i10Index: cells.length > 4 ? cells[4] : null
+  };
 }
 
 function parseScholarRows(html, papers) {
@@ -125,11 +169,12 @@ function parseScholarRows(html, papers) {
 async function fetchSemanticScholar(authorId) {
   const base = `https://api.semanticscholar.org/graph/v1/author/${encodeURIComponent(authorId)}`;
   // Author metadata for total & expected paperCount
-  const authorRes = await fetch(`${base}?fields=citationCount,paperCount,name`, { credentials: 'omit' });
+  const authorRes = await fetch(`${base}?fields=citationCount,paperCount,hIndex,name`, { credentials: 'omit' });
   if (!authorRes.ok) throw new Error(`Semantic Scholar author HTTP ${authorRes.status}`);
   const author = await authorRes.json();
   const expectedPaperCount = Number.isFinite(author.paperCount) ? author.paperCount : null;
   const authorCitationCount = Number.isFinite(author.citationCount) ? author.citationCount : null;
+  const authorHIndex = Number.isFinite(author.hIndex) ? author.hIndex : null;
 
   // Papers — paginate until exhausted; follow API's `next` where available.
   const papers = {};
@@ -178,7 +223,15 @@ async function fetchSemanticScholar(authorId) {
     console.warn('[S2] fetched fewer papers than paperCount; total may undercount.');
   }
 
-  return { total, papers };
+  // S2 exposes hIndex directly but has no i10-index field, so derive it.
+  const metrics = {
+    hIndex: authorHIndex != null ? authorHIndex : computeHIndex(papers),
+    i10Index: computeI10Index(papers),
+    hIndexSource: authorHIndex != null ? 'api' : 'computed',
+    i10IndexSource: 'computed'
+  };
+
+  return { total, papers, metrics };
 }
 
 // ---------- Utilities ----------
@@ -201,6 +254,27 @@ function parseTotal(text) {
 }
 function getActiveAuthorId(settings) {
   return settings.source === 'semanticscholar' ? settings.semanticScholarId : settings.scholarId;
+}
+function getProfileUrl(settings) {
+  const id = getActiveAuthorId(settings);
+  if (!id) return '';
+  return settings.source === 'semanticscholar'
+    ? `https://www.semanticscholar.org/author/${encodeURIComponent(id)}`
+    : `https://scholar.google.com/citations?user=${encodeURIComponent(id)}`;
+}
+function computeHIndex(papers) {
+  const counts = Object.values(papers || {})
+    .map(p => p.citations || 0)
+    .sort((a, b) => b - a);
+  let h = 0;
+  for (let i = 0; i < counts.length; i++) {
+    if (counts[i] >= i + 1) h = i + 1;
+    else break;
+  }
+  return h;
+}
+function computeI10Index(papers) {
+  return Object.values(papers || {}).filter(p => (p.citations || 0) >= 10).length;
 }
 function getTrackingKey(settings) {
   return `${settings.source}:${getActiveAuthorId(settings) || ''}`;
@@ -389,6 +463,16 @@ async function updateCitations() {
     ]);
     const patch = {
       citations: total,
+      metrics: {
+        citations: totalNum,
+        hIndex: result.metrics ? result.metrics.hIndex : null,
+        i10Index: result.metrics ? result.metrics.i10Index : null,
+        hIndexSource: result.metrics ? result.metrics.hIndexSource : null,
+        i10IndexSource: result.metrics ? result.metrics.i10IndexSource : null,
+        paperCount,
+        trackingKey,
+        updatedAt: now
+      },
       lastUpdatedAt: now,
       lastError: ''
     };
@@ -470,6 +554,10 @@ async function updateCitations() {
     chrome.action.setBadgeBackgroundColor({ color: '#1e4fc2' });
     chrome.action.setBadgeText({ text: trimBadge(total) });
     console.log('[citations] updated:', total, 'papers:', Object.keys(result.papers).length);
+    // Reporting is opt-in and must never break a successful refresh.
+    maybeReportSnapshot({ reason: 'scheduled' }).catch(err => {
+      console.warn('[endpoint] scheduled report failed:', err);
+    });
     return true;
   } catch (err) {
     console.error('[citations] failed:', err);
@@ -478,6 +566,258 @@ async function updateCitations() {
     chrome.action.setBadgeText({ text: 'ERR' });
     return false;
   }
+}
+
+// ---------- Endpoint reporting (opt-in) ----------
+// Everything below only runs when the user has explicitly enabled reporting
+// and granted host permission for their own endpoint origin.
+
+function normalizeEndpointUrl(rawUrl) {
+  const value = String(rawUrl || '').trim();
+  if (!value) throw new Error('未填写节点地址');
+  let url;
+  try {
+    url = new URL(value);
+  } catch (_) {
+    throw new Error('节点地址不是合法 URL');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('节点地址必须以 http:// 或 https:// 开头');
+  }
+  return url;
+}
+
+function originPatternFromUrl(url) {
+  return `${url.protocol}//${url.hostname}${url.port ? ':' + url.port : ''}/*`;
+}
+
+async function hasEndpointPermission(url) {
+  try {
+    return await chrome.permissions.contains({ origins: [originPatternFromUrl(url)] });
+  } catch (_) {
+    return false;
+  }
+}
+
+async function getEndpointSecret() {
+  const { endpointSecret } = await chrome.storage.local.get('endpointSecret');
+  return typeof endpointSecret === 'string' ? endpointSecret : '';
+}
+
+function toIso(ts) {
+  const n = Number(ts);
+  return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : null;
+}
+
+// Build the standard `citation.snapshot` payload from local state only.
+async function buildSnapshot() {
+  const settings = await getSettings();
+  const stored = await chrome.storage.local.get([
+    'citations',
+    'metrics',
+    'currentPapers',
+    'currentPapersKey',
+    'baselinePapers',
+    'baselineAt',
+    'citationHistory',
+    'lastUpdatedAt'
+  ]);
+
+  const trackingKey = getTrackingKey(settings);
+  const authorId = getActiveAuthorId(settings);
+  if (!authorId) throw new Error('尚未配置作者 ID');
+
+  const currentPapers = stored.currentPapers && stored.currentPapersKey === trackingKey
+    ? stored.currentPapers
+    : {};
+  const totalNum = parseTotal(stored.citations);
+  if (totalNum == null) throw new Error('尚无可上报的引用数据，请先成功刷新一次');
+
+  const baselinePapers = stored.baselinePapers || null;
+  const baselineSum = baselinePapers ? sumCitations(baselinePapers) : null;
+  const baseByTitle = baselinePapers ? buildTitleIndex(baselinePapers) : null;
+
+  const papers = Object.values(currentPapers)
+    .map(p => {
+      let base = baselinePapers ? baselinePapers[p.id] : null;
+      if (!base && baseByTitle) base = baseByTitle[normTitle(p.title)];
+      const delta = base ? (p.citations || 0) - (base.citations || 0) : null;
+      return {
+        id: p.id,
+        title: p.title,
+        citations: p.citations || 0,
+        delta,
+        url: p.url
+      };
+    })
+    .sort((a, b) => b.citations - a.citations)
+    .slice(0, SNAPSHOT_PAPER_LIMIT);
+
+  const trend = (Array.isArray(stored.citationHistory) ? stored.citationHistory : [])
+    .filter(item => item && item.trackingKey === trackingKey && Number.isFinite(item.total))
+    .slice(-SNAPSHOT_TREND_LIMIT)
+    .map(item => ({ at: toIso(item.ts), citations: item.total }));
+
+  const metrics = stored.metrics && stored.metrics.trackingKey === trackingKey
+    ? stored.metrics
+    : null;
+
+  return {
+    schema: SNAPSHOT_SCHEMA,
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    generator: {
+      name: 'CiteBeat',
+      version: chrome.runtime.getManifest().version
+    },
+    source: {
+      provider: settings.source === 'semanticscholar' ? 'semanticscholar' : 'scholar',
+      authorId,
+      profileUrl: getProfileUrl(settings),
+      fetchedAt: toIso(stored.lastUpdatedAt)
+    },
+    metrics: {
+      citations: totalNum,
+      hIndex: metrics ? metrics.hIndex : null,
+      i10Index: metrics ? metrics.i10Index : null,
+      paperCount: Object.keys(currentPapers).length
+    },
+    period: {
+      mode: settings.baselineMode,
+      startedAt: toIso(stored.baselineAt),
+      citationDelta: baselineSum == null ? null : totalNum - baselineSum
+    },
+    papers,
+    trend
+  };
+}
+
+function shouldRetryStatus(status) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function postSnapshotOnce(url, payload, headers, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      credentials: 'omit',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    // Read a short slice of the body so users can debug their own endpoint.
+    let bodyText = '';
+    try {
+      bodyText = (await res.text()).slice(0, 300);
+    } catch (_) { /* body is optional */ }
+    return { status: res.status, ok: res.ok, body: bodyText };
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error(`请求超时（${Math.round(timeoutMs / 1000)}s）`);
+    }
+    throw new Error(`网络请求失败：${String(err && err.message || err)}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// POST with timeout + bounded retry. Retries only transient failures.
+async function postSnapshot(url, payload, { authType, secret }) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-CiteBeat-Schema': `${SNAPSHOT_SCHEMA}/${SNAPSHOT_SCHEMA_VERSION}`
+  };
+  if (authType === 'bearer' && secret) {
+    headers.Authorization = `Bearer ${secret}`;
+  }
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= ENDPOINT_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await postSnapshotOnce(url, payload, headers, ENDPOINT_TIMEOUT_MS);
+      if (res.ok) return { ...res, attempts: attempt };
+      const detail = res.body ? `：${res.body}` : '';
+      lastError = new Error(`节点返回 HTTP ${res.status}${detail}`);
+      if (!shouldRetryStatus(res.status)) break;
+    } catch (err) {
+      lastError = err;
+    }
+    if (attempt < ENDPOINT_MAX_ATTEMPTS) {
+      await new Promise(r => setTimeout(r, ENDPOINT_RETRY_BASE_MS * attempt));
+    }
+  }
+  throw lastError || new Error('上报失败');
+}
+
+function isReportDue(settings, lastSentAt, now) {
+  if (!lastSentAt) return true;
+  const days = Math.max(1, Number(settings.endpointIntervalDays) || 1);
+  return now - Number(lastSentAt) >= days * 24 * 60 * 60 * 1000;
+}
+
+// Core entry point. `force` bypasses the interval check (manual send / test).
+async function maybeReportSnapshot({ reason = 'scheduled', force = false } = {}) {
+  const settings = await getSettings();
+  if (!settings.endpointEnabled && !force) return { ok: false, skipped: 'disabled' };
+  if (!settings.endpointUrl) {
+    if (force) throw new Error('未填写节点地址');
+    return { ok: false, skipped: 'no-url' };
+  }
+
+  const url = normalizeEndpointUrl(settings.endpointUrl);
+  const now = Date.now();
+  const { endpointLastSentAt } = await chrome.storage.local.get('endpointLastSentAt');
+  if (!force && !isReportDue(settings, endpointLastSentAt, now)) {
+    return { ok: false, skipped: 'not-due' };
+  }
+
+  if (!(await hasEndpointPermission(url))) {
+    const message = '尚未授权访问该节点域名，请在设置页点击“测试节点”或“立即发送”完成授权';
+    await chrome.storage.local.set({
+      endpointLastStatus: 'error',
+      endpointLastError: message,
+      endpointLastAttemptAt: now
+    });
+    if (force) throw new Error(message);
+    return { ok: false, skipped: 'no-permission' };
+  }
+
+  const payload = await buildSnapshot();
+  const secret = await getEndpointSecret();
+  try {
+    const res = await postSnapshot(url, payload, {
+      authType: settings.endpointAuthType,
+      secret
+    });
+    await chrome.storage.local.set({
+      endpointLastSentAt: now,
+      endpointLastAttemptAt: now,
+      endpointLastStatus: 'ok',
+      endpointLastError: '',
+      endpointLastHttpStatus: res.status
+    });
+    console.log('[endpoint] reported (%s) HTTP %s in %s attempt(s)', reason, res.status, res.attempts);
+    return { ok: true, status: res.status, attempts: res.attempts };
+  } catch (err) {
+    const message = String(err && err.message || err);
+    await chrome.storage.local.set({
+      endpointLastAttemptAt: now,
+      endpointLastStatus: 'error',
+      endpointLastError: message
+    });
+    console.warn('[endpoint] report failed:', message);
+    if (force) throw err;
+    return { ok: false, error: message };
+  }
+}
+
+async function ensureEndpointAlarm() {
+  const settings = await getSettings();
+  await chrome.alarms.clear(ENDPOINT_CHECK_ALARM);
+  if (!settings.endpointEnabled) return;
+  chrome.alarms.create(ENDPOINT_CHECK_ALARM, { periodInMinutes: ENDPOINT_CHECK_MINUTES });
 }
 
 // ---------- Delayed first run ----------
@@ -501,6 +841,7 @@ async function ensureAlarm() {
 chrome.runtime.onInstalled.addListener(async (details) => {
   await ensureStorageSchema();
   await ensureAlarm();
+  await ensureEndpointAlarm();
   // First-time install with no ID: open options page so user can configure.
   if (details && details.reason === 'install') {
     const s = await getSettings();
@@ -517,11 +858,17 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.runtime.onStartup.addListener(async () => {
   await ensureStorageSchema();
   await ensureAlarm();
+  await ensureEndpointAlarm();
   delayedUpdateWithRetry();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'periodicUpdate') updateCitations();
+  if (alarm.name === ENDPOINT_CHECK_ALARM) {
+    maybeReportSnapshot({ reason: 'alarm' }).catch(err => {
+      console.warn('[endpoint] alarm report failed:', err);
+    });
+  }
 });
 
 // React to settings changes: if period / source / id changed, re-sync.
@@ -529,6 +876,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== 'local') return;
   if (changes.settings) {
     await ensureAlarm();
+    await ensureEndpointAlarm();
     if (changes.restoreInProgress) return;
     updateCitations();
   }
@@ -562,6 +910,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           lastBaselineReset: { ts: now, reason: 'manual' }
         });
         sendResponse({ ok: true });
+      } else if (msg?.type === 'previewSnapshot') {
+        const snapshot = await buildSnapshot();
+        sendResponse({ ok: true, snapshot });
+      } else if (msg?.type === 'sendSnapshot') {
+        const res = await maybeReportSnapshot({ reason: msg.reason || 'manual', force: true });
+        sendResponse({ ok: true, ...res });
       } else {
         sendResponse({ ok: false, error: 'unknown message' });
       }
