@@ -16,19 +16,31 @@ SUB = (107, 114, 128)
 
 
 def load_font(size, bold=False):
+    """Find a CJK-capable font. The bitmap fallback cannot render Chinese,
+    so fail loudly rather than silently emitting tofu boxes."""
     candidates = [
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/Library/Fonts/Arial.ttf",
+        # macOS
+        ("/System/Library/Fonts/PingFang.ttc", 1 if bold else 0),
+        ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
+        # Windows
+        (r"C:\Windows\Fonts\msyhbd.ttc" if bold else r"C:\Windows\Fonts\msyh.ttc", 0),
+        (r"C:\Windows\Fonts\simhei.ttf", 0),
+        (r"C:\Windows\Fonts\simsun.ttc", 0),
+        # Linux
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold
+         else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
+        ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 0),
     ]
-    for p in candidates:
+    for path, index in candidates:
         try:
-            return ImageFont.truetype(
-                p, size, index=1 if bold and p.endswith(".ttc") else 0
-            )
+            return ImageFont.truetype(path, size, index=index)
         except Exception:
             continue
-    return ImageFont.load_default()
+    raise SystemExit(
+        "No CJK font found. Install one, or add its path to load_font().\n"
+        "The default bitmap font renders Chinese as empty boxes, which would\n"
+        "silently produce broken store screenshots."
+    )
 
 
 def paste_with_shadow(canvas, img, pos, radius=24, shadow=18):
@@ -64,25 +76,28 @@ def shot1():
     make_header(canvas, "CiteBeat", "听见你引用的节拍 · 追踪每篇论文的引用增长")
 
     popup = Image.open(DOCS / "screenshot-popup.png").convert("RGBA")
-    # 放大到约 560 宽
-    ratio = 560 / popup.width
-    popup = popup.resize((560, int(popup.height * ratio)), Image.LANCZOS)
-    paste_with_shadow(canvas, popup, (80, 200))
+    # Fit inside the 200..760 band so nothing is clipped by the canvas edge.
+    MAX_W, MAX_H = 560, 560
+    ratio = min(MAX_W / popup.width, MAX_H / popup.height)
+    popup = popup.resize(
+        (int(popup.width * ratio), int(popup.height * ratio)), Image.LANCZOS
+    )
+    paste_with_shadow(canvas, popup, (110, 200))
 
     # 右侧说明
     draw = ImageDraw.Draw(canvas)
     tf = load_font(34, bold=True)
     bf = load_font(22)
-    draw.text((720, 220), "本周期新增引用", fill=ACCENT, font=tf)
+    draw.text((760, 240), "本周期新增引用", fill=ACCENT, font=tf)
     bullets = [
         "• 按论文粒度记录基线",
-        "• 实时显示增长数量与总引用",
+        "• 引用减少或被合并也单独列出",
+        "• 内置引用趋势图",
         "• 支持 Google Scholar / Semantic Scholar",
-        "• 一键手动刷新或重置基线",
     ]
-    y = 285
+    y = 305
     for b in bullets:
-        draw.text((720, y), b, fill=TEXT, font=bf)
+        draw.text((760, y), b, fill=TEXT, font=bf)
         y += 42
 
     canvas.convert("RGB").save(OUT / "screenshot-1-popup.png", "PNG", optimize=True)
@@ -92,19 +107,36 @@ def shot1():
 def shot2():
     """Options 界面"""
     canvas = Image.new("RGBA", (W, H), BG + (255,))
-    make_header(canvas, "灵活配置", "双数据源切换 · 自定义刷新间隔")
+    make_header(canvas, "灵活配置", "双数据源切换 · 自动统计周期 · 可选主页上报")
 
     opts = Image.open(DOCS / "screenshot-options.png").convert("RGBA")
-    # 缩小到 900 宽
-    ratio = 900 / opts.width
-    opts = opts.resize((900, int(opts.height * ratio)), Image.LANCZOS)
-    # 可能超高，限高 520
-    if opts.height > 520:
-        r2 = 520 / opts.height
-        opts = opts.resize((int(opts.width * r2), 520), Image.LANCZOS)
-    x = (W - opts.width) // 2
-    y = 220
-    paste_with_shadow(canvas, opts, (x, y))
+    # The options page is far taller than the 1280x800 canvas. Scaling the
+    # whole page down makes the text unreadable, so crop to the top section
+    # instead. Raise CROP if the page grows and the cut lands mid-field.
+    CROP = 0.54
+    opts = opts.crop((0, 0, opts.width, int(opts.height * CROP)))
+
+    MAX_W, MAX_H = 700, 560
+    ratio = min(MAX_W / opts.width, MAX_H / opts.height)
+    opts = opts.resize(
+        (int(opts.width * ratio), int(opts.height * ratio)), Image.LANCZOS
+    )
+    paste_with_shadow(canvas, opts, (80, 200))
+
+    draw = ImageDraw.Draw(canvas)
+    tf = load_font(34, bold=True)
+    bf = load_font(22)
+    draw.text((830, 240), "按你的习惯配置", fill=ACCENT, font=tf)
+    bullets = [
+        "• 双数据源随时切换",
+        "• 手动 / 每周 / 每月 / 每 N 天",
+        "• 可选上报到自己的主页",
+        "• 数据默认仅存本地",
+    ]
+    y = 305
+    for b in bullets:
+        draw.text((830, y), b, fill=TEXT, font=bf)
+        y += 42
 
     canvas.convert("RGB").save(OUT / "screenshot-2-options.png", "PNG", optimize=True)
     print("screenshot-2-options.png")
@@ -151,7 +183,7 @@ def shot3():
 
     # 底部说明
     foot = load_font(20)
-    ft = "MIT 开源 · Chrome MV3 · 无数据收集"
+    ft = "开源 · Chrome MV3 · 数据默认仅存本地"
     fw = draw.textlength(ft, font=foot)
     draw.text(((W - fw) // 2, 640), ft, fill=SUB, font=foot)
 
