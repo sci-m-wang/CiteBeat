@@ -1,9 +1,31 @@
-# CiteBeat
+<div align="center">
+  <img src="icons/icon128.png" width="80" />
+  <h1>CiteBeat</h1>
+  <p><em>听见你引用的节拍。</em></p>
+</div>
 
-> 听见你引用的节拍。
-> 一个极简的浏览器扩展，定时获取你的 Google Scholar / Semantic Scholar 总引用数，并一键查看本周期内引用有增长的论文。
+<p align="center">
+  <a href="https://github.com/MLNLP-World/CiteBeat/blob/main/manifest.json">
+    <img alt="版本" src="https://img.shields.io/github/manifest-json/v/MLNLP-World/CiteBeat" />
+  </a>
+  <a href="LICENSE">
+    <img alt="许可证" src="https://img.shields.io/badge/License-SymPro-blue" />
+  </a>
+  <a href="https://github.com/MLNLP-World/CiteBeat/stargazers">
+    <img alt="星标" src="https://img.shields.io/github/stars/MLNLP-World/CiteBeat" />
+  </a>
+  <a href="https://github.com/MLNLP-World/CiteBeat/network/members">
+    <img alt="分叉" src="https://img.shields.io/github/forks/MLNLP-World/CiteBeat" />
+  </a>
+  <a href="https://github.com/MLNLP-World/CiteBeat/issues">
+    <img alt="问题" src="https://img.shields.io/github/issues/MLNLP-World/CiteBeat" />
+  </a>
+  <a href="https://github.com/MLNLP-World/CiteBeat/pulls">
+    <img alt="欢迎PR" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" />
+  </a>
+</p>
 
-![icon](icons/icon128.png)
+一个极简的浏览器扩展，定时获取你的 Google Scholar / Semantic Scholar 总引用数，并一键查看本周期内引用有增长的论文。
 
 ## 功能
 
@@ -24,7 +46,7 @@
 
 ### 开发者模式加载
 
-1. 克隆本仓库：`git clone https://github.com/sci-m-wang/CiteBeat.git`
+1. 克隆本仓库：`git clone https://github.com/MLNLP-World/CiteBeat.git`
 2. 在仓库目录运行 `./pack.sh`（会生成 `dist/unpacked/` 目录）
 3. 打开 `chrome://extensions` 或 `edge://extensions`，启用"开发者模式"
 4. 点"加载已解压的扩展程序"，选择 `dist/unpacked`
@@ -190,14 +212,30 @@ document.querySelector('#hindex').textContent = snap.metrics.hIndex;
 
 ## 参与贡献
 
-欢迎 issue / PR。小工具、轻维护，任何改进都欢迎：
+欢迎 [issue](https://github.com/MLNLP-World/CiteBeat/issues) / [PR](https://github.com/MLNLP-World/CiteBeat/pulls)。小工具、轻维护，任何改进都欢迎：
 
 - 报 bug：issue 附上数据源、作者 ID（若方便）、service worker console 的日志
 - 提新功能前，先开 issue 聊一下思路
 
+## 致谢
+
+本项目由 [MLNLP 社区](https://github.com/MLNLP-World) 维护。
+
+### 发起人&组织者
+
+<a href="https://github.com/sci-m-wang"> <img src="https://images.weserv.nl/?url=github.com/sci-m-wang.png?v=4&mask=circle" width="60"> </a>
+
+### 贡献者列表
+
+<a href="https://github.com/sci-m-wang"> <img src="https://images.weserv.nl/?url=github.com/sci-m-wang.png?v=4&mask=circle" width="60"> </a>
+&nbsp;
+<a href="https://github.com/ZhangYiqun018"> <img src="https://images.weserv.nl/?url=github.com/ZhangYiqun018.png?v=4&mask=circle" width="60"> </a>
+&nbsp;
+<a href="https://github.com/lumen-coder"> <img src="https://images.weserv.nl/?url=github.com/lumen-coder.png?v=4&mask=circle" width="60"> </a>
+
 ## 许可证
 
-基于 [MIT](LICENSE) 协议开源 © 2026 KinaMind。
+基于 [SymPro License](LICENSE) 开源 © 2026 KinaMind。
 
 人-Agent 协作归属与溯源元数据遵循 [SymPro 0.1](https://github.com/kinamind/SymPro)
-协议，详见仓库内 `.sympro/` 目录。SymPro 作为 MIT 的补充，不改变代码本身的许可。
+协议，详见仓库内 `.sympro/` 目录。
