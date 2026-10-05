@@ -2,6 +2,19 @@ SymPro License
 
 Copyright (c) 2026 KinaMind
 
+This project is released under the SymPro License, which inherits all terms of
+the MIT License reproduced below. In addition, attribution and provenance
+metadata for human-AI collaborative contributions are governed by the SymPro 0.1
+protocol (https://github.com/kinamind/SymPro); see the `.sympro/` directory in
+this repository. SymPro does not alter the distribution, modification, or
+warranty terms of the MIT License.
+
+--------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2026 KinaMind
+
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights

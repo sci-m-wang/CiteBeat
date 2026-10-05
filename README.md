@@ -237,5 +237,5 @@ document.querySelector('#hindex').textContent = snap.metrics.hIndex;
 
 基于 [SymPro License](LICENSE) 开源 © 2026 KinaMind。
 
-人-Agent 协作归属与溯源元数据遵循 [SymPro 0.1](https://github.com/kinamind/SymPro)
-协议，详见仓库内 `.sympro/` 目录。
+SymPro License 继承 MIT License 的全部条款，并在此基础上补充人-Agent 协作的归属与溯源规范
+（[SymPro 0.1](https://github.com/kinamind/SymPro)），详见仓库内 `.sympro/` 目录。
