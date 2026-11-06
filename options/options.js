@@ -414,6 +414,12 @@ $('save').addEventListener('click', async () => {
     }
   }
 
+  const { settings: previous } = await chrome.storage.local.get('settings');
+  const sourceChanged = !previous
+    || previous.source !== source
+    || previous.scholarId !== scholarId
+    || previous.semanticScholarId !== semanticScholarId;
+
   const patch = {
     settings: {
       source,
@@ -430,7 +436,7 @@ $('save').addEventListener('click', async () => {
   clearCredentialInputs();
   $('welcome').classList.remove('show');
   await renderEndpointStatus();
-  setStatus('已保存，正在刷新…');
+  setStatus(sourceChanged ? '已保存，正在刷新…' : '已保存');
 });
 
 document.querySelectorAll('input[name=endpointMode]').forEach(el => {

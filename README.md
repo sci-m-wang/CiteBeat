@@ -206,7 +206,7 @@ document.querySelector('#hindex').textContent = snap.metrics.hIndex;
 
 ## 已知限制
 
-- Google Scholar 在高频抓取下可能会触发临时验证码，建议刷新间隔 ≥ 15 分钟
+- Google Scholar 在高频抓取下可能会触发临时验证码，建议刷新间隔 ≥ 15 分钟。被限流时扩展会保留上次的数据并在弹窗里提示，不会把总引用清零
 - Semantic Scholar 作者页与 API 口径偶有差异，已自动取二者较大值
 - Google Scholar 论文列表通过分页抓取；若页面结构变化或被临时限制访问，论文级增长可能暂时无法完整归因
 

@@ -10,7 +10,7 @@
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 扩展包 | 就绪 | `dist/citebeat-0.3.3.zip`（25 文件，无冗余） |
+| 扩展包 | 就绪 | `dist/citebeat-0.3.4.zip`（18 文件，无冗余） |
 | 隐私政策 URL | 就绪 | https://sci-m-wang.github.io/CiteBeat/privacy/ |
 | 128×128 图标 | 就绪 | 已在包内 |
 | 截图 ×3 | 就绪 | `store/screenshot-{1,2,3}-*.png`，1280×800，已对齐 v0.3.x 界面 |

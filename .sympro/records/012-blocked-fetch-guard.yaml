@@ -1,0 +1,59 @@
+id: record-0012
+timestamp: 2026-06-13T20:00:00Z
+summary: >-
+  v0.3.4 fixes a silent data-loss bug: when Google Scholar rate-limited the
+  extension it answered with a captcha page served as HTTP 200, which carries
+  no stats table and no paper rows. fetchScholar parsed that as an author with
+  nothing, fell back to String(sum of zero papers), and updateCitations wrote
+  "0" over the real total, zeroed h-index/i10 and appended a 0 entry to the
+  trend history, all without setting lastError. Only the paper list and
+  baseline were protected. The fix detects a profile page by positive markers
+  rather than by status code and throws a specific error for a captcha or an
+  unrecognised page; adds a source-agnostic guard so an empty result is never
+  accepted over known data (covers Semantic Scholar too); and adds an
+  idempotent healPoisonedState() that repairs already-damaged storage from the
+  paper list and history, which the bug never touched. Separately, the
+  settings listener refetched on every settings write, so editing the refresh
+  interval or reporting target hit Scholar and raised the chance of being
+  rate-limited; it now refetches only when source or author id changes.
+  scripts/test_background.mjs loads the real service worker against a stubbed
+  chrome.* and a scripted fetch; the failing cases were reproduced against the
+  unfixed code first, and detection was verified against the live response.
+participation_mode:
+  - implementation
+  - bugfix
+  - testing
+participation_intensity: moderate
+autonomy_mode: human-directed
+artifacts:
+  - background.js
+  - options/options.js
+  - scripts/test_background.mjs
+  - manifest.json
+  - README.md
+  - store/chrome/SUBMISSION.md
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User reported that a fetch had just turned the citation count into 0 and
+    asked for the cause to be investigated.
+validation:
+  review_status: reviewed
+  validation_mode:
+    - automated_checks
+    - reproduction
+  checks:
+    - node --check background.js options/options.js popup/popup.js
+    - node scripts/test_background.mjs (16 checks failing against the unfixed code, 32 of 32 passing after)
+    - detection verified against the live blocked Scholar response

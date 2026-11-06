@@ -52,6 +52,60 @@ async function ensureStorageSchema() {
   if (!Number.isFinite(current) || current < STORAGE_SCHEMA_VERSION) {
     await chrome.storage.local.set({ storageSchemaVersion: STORAGE_SCHEMA_VERSION });
   }
+  await healPoisonedState();
+}
+
+// Up to 0.3.3, a rate-limited Scholar request (a captcha page served as HTTP
+// 200) was parsed as an author with nothing and "0" was written over a good
+// total. Undo that from data the bug never touched: the paper list and the
+// history. Idempotent, and a no-op on healthy state.
+async function healPoisonedState() {
+  const stored = await chrome.storage.local.get([
+    'citations', 'metrics', 'currentPapers', 'currentPapersKey', 'citationHistory'
+  ]);
+  const patch = {};
+
+  const history = Array.isArray(stored.citationHistory) ? stored.citationHistory : [];
+  const keysWithRealTotals = new Set(history.filter(h => h && h.total > 0).map(h => h.trackingKey));
+  const cleaned = history.filter(h => !(
+    h && h.total === 0 && !(h.paperCount > 0) && keysWithRealTotals.has(h.trackingKey)
+  ));
+  if (cleaned.length !== history.length) patch.citationHistory = cleaned;
+
+  const papers = stored.currentPapers || {};
+  const key = stored.currentPapersKey || '';
+  const metrics = stored.metrics || null;
+  const sameAuthor = !metrics || !metrics.trackingKey || metrics.trackingKey === key;
+  if (key && sameAuthor && parseTotal(stored.citations) === 0 && sumCitations(papers) > 0) {
+    // A total of 0 next to a paper list that still has citations is impossible.
+    const lastReal = [...cleaned].reverse().find(h => h && h.trackingKey === key && h.total > 0);
+    const restored = lastReal ? lastReal.total : sumCitations(papers);
+    const wasZeroed = metrics && metrics.hIndex === 0 && metrics.i10Index === 0;
+    patch.citations = String(restored);
+    patch.metrics = {
+      ...(metrics || {}),
+      citations: restored,
+      paperCount: Object.keys(papers).length,
+      trackingKey: key,
+      ...(wasZeroed || !metrics ? {
+        hIndex: computeHIndex(papers),
+        i10Index: computeI10Index(papers),
+        hIndexSource: 'computed',
+        i10IndexSource: 'computed'
+      } : {})
+    };
+  }
+
+  if (Object.keys(patch).length === 0) return false;
+  await chrome.storage.local.set(patch);
+  if (patch.citations) {
+    chrome.action.setBadgeBackgroundColor({ color: '#1e4fc2' });
+    chrome.action.setBadgeText({ text: trimBadge(patch.citations) });
+  }
+  console.warn('[heal] repaired data damaged by a blocked fetch:',
+    patch.citations ? `total restored to ${patch.citations}` : '',
+    cleaned.length !== history.length ? `${history.length - cleaned.length} bad history entr(y/ies) removed` : '');
+  return true;
 }
 
 async function getSettings() {
@@ -83,12 +137,33 @@ async function getState() {
 }
 
 // ---------- Source: Google Scholar ----------
+
+// A real profile page always carries at least one of these markers, even for an
+// author with no papers. Captcha, rate-limit and error pages carry none of them
+// yet still come back as HTTP 200, so the status code alone cannot be trusted.
+function looksLikeScholarProfile(html) {
+  return /id="gsc_prf_in"|id="gsc_rsb_st"|id="gsc_a_b"|class="gsc_a_tr"/i.test(html);
+}
+
+function looksLikeScholarBlock(html) {
+  return /gs_captcha|g-recaptcha|recaptcha|not a robot|unusual traffic|sorry\/index/i.test(html);
+}
+
+function assertScholarProfile(html) {
+  if (looksLikeScholarProfile(html)) return;
+  if (looksLikeScholarBlock(html)) {
+    throw new Error('Google Scholar 要求人机验证（请求被限流），已保留上次数据。请稍后再试；若持续出现，建议调大刷新间隔，并在浏览器中打开 scholar.google.com 确认能正常访问');
+  }
+  throw new Error('Google Scholar 返回的页面不是作者主页（页面结构可能已变化，或作者 ID 无效），已保留上次数据');
+}
+
 async function fetchScholar(userId) {
   // Total citations from the first page; papers paginated via cstart.
   const firstUrl = `https://scholar.google.com/citations?user=${encodeURIComponent(userId)}&hl=en&cstart=0&pagesize=100`;
   const firstRes = await fetch(firstUrl, { credentials: 'omit' });
   if (!firstRes.ok) throw new Error(`Google Scholar HTTP ${firstRes.status}`);
   const firstHtml = await firstRes.text();
+  assertScholarProfile(firstHtml);
 
   // The right-hand stats table lists, in order:
   //   Citations(all, since) / h-index(all, since) / i10-index(all, since)
@@ -471,8 +546,23 @@ async function updateCitations() {
       'baselineKey',
       'currentPapers',
       'currentPapersKey',
-      'citationHistory'
+      'citationHistory',
+      'citations'
     ]);
+
+    // Refuse a result that looks like a failed fetch rather than real data.
+    // "Could not parse" is not the same as "zero", and an author who had
+    // citations last time does not suddenly have none and no papers.
+    if (totalNum == null) {
+      throw new Error('未能从数据源解析出总引用数，已保留上次数据');
+    }
+    const sameAuthor = (prev.currentPapersKey || prev.baselineKey || '') === trackingKey;
+    const knownTotal = sameAuthor
+      ? Math.max(parseTotal(prev.citations) || 0, sumCitations(prev.currentPapers || {}))
+      : 0;
+    if (paperCount === 0 && totalNum === 0 && knownTotal > 0) {
+      throw new Error(`数据源返回了空结果（0 篇论文、0 次引用），而上次为 ${knownTotal}，疑似被限流或页面异常，已保留上次数据`);
+    }
     const patch = {
       citations: total,
       metrics: {
@@ -1049,14 +1139,25 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
-// React to settings changes: if period / source / id changed, re-sync.
+// Only the identity of the data source warrants a fresh fetch. Editing the
+// refresh interval or the reporting target must not hit Scholar, which answers
+// with a captcha page once it gets suspicious about request volume.
+const FETCH_SETTING_KEYS = ['source', 'scholarId', 'semanticScholarId'];
+function fetchSourceChanged(change) {
+  const before = (change && change.oldValue) || {};
+  const after = (change && change.newValue) || {};
+  return FETCH_SETTING_KEYS.some(k => before[k] !== after[k]);
+}
+
+// React to settings changes: re-arm the alarms, and re-sync only when the
+// data source itself changed.
 chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== 'local') return;
   if (changes.settings) {
     await ensureAlarm();
     await ensureEndpointAlarm();
     if (changes.restoreInProgress) return;
-    updateCitations();
+    if (fetchSourceChanged(changes.settings)) updateCitations();
   }
 });
 
