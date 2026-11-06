@@ -67,11 +67,12 @@ function goodState() {
 }
 
 // ---- Harness ----
-async function makeEnv(initial, fetchHandler) {
+async function makeEnv(initial, fetchHandler, opts = {}) {
   const store = JSON.parse(JSON.stringify(initial || {}));
   const listeners = { storageChanged: [] };
   const badge = { text: null, color: null };
   const fetchLog = [];
+  const fetchInits = [];
   const noop = () => {};
 
   const chromeStub = {
@@ -96,23 +97,24 @@ async function makeEnv(initial, fetchHandler) {
       setBadgeText: ({ text }) => { badge.text = text; },
       setBadgeBackgroundColor: ({ color }) => { badge.color = color; }
     },
-    permissions: { contains: async () => false, request: async () => false }
+    permissions: { contains: async () => !!opts.permit, request: async () => !!opts.permit }
   };
 
   globalThis.__chrome = chromeStub;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     fetchLog.push(String(url));
+    fetchInits.push({ url: String(url), credentials: init && init.credentials });
     const body = await fetchHandler(String(url));
     const status = body.status ?? 200;
     const text = typeof body.body === 'string' ? body.body : JSON.stringify(body.body ?? {});
     return { status, ok: status >= 200 && status < 300, text: async () => text, json: async () => JSON.parse(text) };
   };
 
-  const wanted = ['updateCitations', 'healPoisonedState', 'ensureStorageSchema'];
+  const wanted = ['updateCitations', 'healPoisonedState', 'ensureStorageSchema', 'maybeReportSnapshot'];
   const exported = wanted.filter(n => new RegExp(`function ${n}\\b`).test(SRC));
   const code = `const chrome = globalThis.__chrome;\n${SRC}\nexport { ${exported.join(', ')} };`;
   const mod = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64') + `#${Math.random()}`);
-  return { store, badge, fetchLog, listeners, mod };
+  return { store, badge, fetchLog, fetchInits, listeners, mod };
 }
 
 // ---- Tiny runner ----
@@ -254,6 +256,44 @@ say(`Testing: ${path.relative(ROOT, SRC_PATH)}\n`);
   check('scholarId change -> request', await fire(base, { ...base, scholarId: 'V' }) > 0);
   check('source change -> request', await fire(base, { ...base, source: 'semanticscholar' }) > 0);
   check('first save (no previous value) -> request', await fire(undefined, base) > 0);
+}
+
+// 10. Scholar needs the browser's session; nothing else may receive cookies.
+{
+  say('[10] cookies go to Scholar only');
+  const env = await makeEnv(goodState(), scholar(PROFILE(GOOD_ROWS)));
+  await env.mod.updateCitations();
+  const sch = env.fetchInits.filter(r => /scholar\.google\.com/.test(r.url));
+  check('made Scholar requests', sch.length > 0);
+  check("every Scholar request uses credentials 'include'",
+        sch.every(r => r.credentials === 'include'), JSON.stringify(sch));
+
+  const s2 = await makeEnv({ settings: { source: 'semanticscholar', semanticScholarId: '123' } }, async (url) => (
+    /\/papers\?/.test(url)
+      ? { body: { data: [{ paperId: 'x', title: 'T', citationCount: 5 }] } }
+      : { body: { citationCount: 5, paperCount: 1, hIndex: 1 } }
+  ));
+  await s2.mod.updateCitations();
+  const sem = s2.fetchInits.filter(r => /semanticscholar\.org/.test(r.url));
+  check('made Semantic Scholar requests', sem.length > 0);
+  check("Semantic Scholar requests keep credentials 'omit'",
+        sem.every(r => r.credentials === 'omit'), JSON.stringify(sem));
+
+  // The reporting target is the user's own server (or GitHub). It must never
+  // receive the browser's Google cookies.
+  const st = goodState();
+  st.settings = { ...st.settings, endpointEnabled: true, endpointMode: 'generic',
+                  endpointUrl: 'https://node.example/api', endpointAuthType: 'none' };
+  const rep = await makeEnv(st, async () => ({ body: { ok: true } }), { permit: true });
+  if (typeof rep.mod.maybeReportSnapshot === 'function') {
+    await rep.mod.maybeReportSnapshot({ reason: 'test', force: true });
+    const out = rep.fetchInits.filter(r => /node\.example/.test(r.url));
+    check('reporting request was made', out.length > 0);
+    check("reporting request keeps credentials 'omit'",
+          out.every(r => r.credentials === 'omit'), JSON.stringify(out));
+  } else {
+    check('maybeReportSnapshot exists', false);
+  }
 }
 
 say(`\n${passed} passed, ${failed} failed`);

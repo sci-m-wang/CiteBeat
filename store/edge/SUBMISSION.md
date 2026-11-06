@@ -146,6 +146,12 @@ The extension:
   - Stores baselines in chrome.storage.local only
   - Accesses only scholar.google.com (public author pages) and
     api.semanticscholar.org (official public API) by default
+  - Requests to scholar.google.com use credentials: 'include', so the
+    browser attaches the user's existing Scholar cookies exactly as when
+    visiting the page (without them Scholar demands human verification).
+    The extension cannot read, store or forward these cookies. Requests
+    to Semantic Scholar and to the optional reporting target never carry
+    cookies.
 
 About the broad optional_host_permissions ("https://*/*", "http://*/*"):
 

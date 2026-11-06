@@ -196,7 +196,7 @@ document.querySelector('#hindex').textContent = snap.metrics.hIndex;
 | `https://api.semanticscholar.org/*` | 调用 Semantic Scholar 官方 Graph API |
 | `optional_host_permissions` | 仅在启用上报并授权后，向你自填的节点地址发送快照 |
 
-扩展不会读取其他任何页面，不会与第三方服务器通信，也不会收集任何用户识别信息。
+扩展不会读取其他任何页面，不会与第三方服务器通信，也不会收集任何用户识别信息。对 Google Scholar 的请求会像你自己访问时一样，由浏览器附带该站点已有的 cookie（扩展读取不到它们）；Semantic Scholar 与上报请求不携带 cookie。
 唯一的对外发送是你主动配置并授权的上报节点。详见 [PRIVACY.md](PRIVACY.md)。
 
 ## 截图

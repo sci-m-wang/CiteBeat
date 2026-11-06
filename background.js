@@ -152,15 +152,24 @@ function looksLikeScholarBlock(html) {
 function assertScholarProfile(html) {
   if (looksLikeScholarProfile(html)) return;
   if (looksLikeScholarBlock(html)) {
-    throw new Error('Google Scholar 要求人机验证（请求被限流），已保留上次数据。请稍后再试；若持续出现，建议调大刷新间隔，并在浏览器中打开 scholar.google.com 确认能正常访问');
+    throw new Error('Google Scholar 要求人机验证（请求被限流），已保留上次数据。请在浏览器中打开 scholar.google.com 完成验证后再刷新；若持续出现，建议调大刷新间隔');
   }
   throw new Error('Google Scholar 返回的页面不是作者主页（页面结构可能已变化，或作者 ID 无效），已保留上次数据');
 }
 
+// Scholar challenges anonymous clients far more readily than ones with an
+// established session. A request without cookies is indistinguishable from a
+// fresh private window, which is where verification gets demanded even though
+// the user's normal browsing is fine. Carry the browser's own scholar.google.com
+// cookies, exactly as when the user visits the page. The extension cannot read
+// them. Only Scholar requests do this: the Semantic Scholar API and the
+// reporting endpoint keep credentials 'omit'.
+const SCHOLAR_FETCH_INIT = { credentials: 'include' };
+
 async function fetchScholar(userId) {
   // Total citations from the first page; papers paginated via cstart.
   const firstUrl = `https://scholar.google.com/citations?user=${encodeURIComponent(userId)}&hl=en&cstart=0&pagesize=100`;
-  const firstRes = await fetch(firstUrl, { credentials: 'omit' });
+  const firstRes = await fetch(firstUrl, SCHOLAR_FETCH_INIT);
   if (!firstRes.ok) throw new Error(`Google Scholar HTTP ${firstRes.status}`);
   const firstHtml = await firstRes.text();
   assertScholarProfile(firstHtml);
@@ -180,7 +189,7 @@ async function fetchScholar(userId) {
   let lastCount = Object.keys(papers).length;
   while (lastCount >= cstart && cstart < hardCap) {
     const url = `https://scholar.google.com/citations?user=${encodeURIComponent(userId)}&hl=en&cstart=${cstart}&pagesize=100`;
-    const res = await fetch(url, { credentials: 'omit' });
+    const res = await fetch(url, SCHOLAR_FETCH_INIT);
     if (!res.ok) break;
     const html = await res.text();
     const before = Object.keys(papers).length;

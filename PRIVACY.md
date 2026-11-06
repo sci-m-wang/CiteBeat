@@ -5,7 +5,7 @@ permalink: /privacy/
 
 # Privacy Policy — CiteBeat
 
-_Last updated: 2026-06-13_
+_Last updated: 2026-11-06_
 
 **CiteBeat**（"本扩展"）是一个浏览器扩展，用于定时获取用户本人的公开学术引用数据并在浏览器本地展示。本扩展遵循"最小化数据处理"原则。
 
@@ -46,16 +46,16 @@ _Last updated: 2026-06-13_
 
 本扩展默认仅会向以下两个域名发起网络请求，且仅为获取用户本人选择跟踪的公开学术页面：
 
-- `https://scholar.google.com/` — 读取用户公开的 Google Scholar 个人主页 HTML
-- `https://api.semanticscholar.org/` — 调用官方 Semantic Scholar Graph API
+- `https://scholar.google.com/` — 读取用户公开的 Google Scholar 个人主页 HTML。请求会携带浏览器里本来就有的 `scholar.google.com` cookie，与用户自己打开该页面时完全相同；否则 Scholar 会把扩展当作匿名机器人而要求人机验证。扩展代码读取不到这些 cookie，也不会存储、记录或转发它们
+- `https://api.semanticscholar.org/` — 调用官方 Semantic Scholar Graph API（请求不携带 cookie）
 
-此外，**仅当用户主动启用上报功能并授权后**，扩展才会向用户自己配置的目标发起请求 —— 自定义节点模式是用户填写的那一个域名，GitHub Pages 模式是 `https://api.github.com`。扩展声明的 `optional_host_permissions` 为通配形式，是因为无法预知用户会使用哪个自建域名；实际授权范围始终由用户在浏览器授权弹窗中逐个确认。
+此外，**仅当用户主动启用上报功能并授权后**，扩展才会向用户自己配置的目标发起请求 —— 自定义节点模式是用户填写的那一个域名，GitHub Pages 模式是 `https://api.github.com`。这类上报请求**不携带任何 cookie**。扩展声明的 `optional_host_permissions` 为通配形式，是因为无法预知用户会使用哪个自建域名；实际授权范围始终由用户在浏览器授权弹窗中逐个确认。
 
-除用户明确配置的作者 ID 外，本扩展不会向上述网站发送任何额外识别信息。
+除用户明确配置的作者 ID 外，本扩展自身不会向上述网站发送任何额外信息。对 `scholar.google.com` 的请求，浏览器会照常附带该站点已有的 cookie，这与用户直接访问该页面一致。
 
 ## 4. 我们不做的事
 
-- 不收集任何 Cookie、登录凭据或浏览历史
+- 不读取、不存储、不收集任何 Cookie、登录凭据或浏览历史（对 Google Scholar 的请求由浏览器自动附带该站点已有的 cookie，扩展无法读取，更不会转发给任何其他方）
 - 不使用任何分析、追踪或广告 SDK
 - 不向扩展作者或任何第三方传输用户数据
 - 不访问用户访问的其他任何网页

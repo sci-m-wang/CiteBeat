@@ -10,7 +10,7 @@
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 扩展包 | 就绪 | `dist/citebeat-0.3.4.zip`（18 文件，无冗余） |
+| 扩展包 | 就绪 | `dist/citebeat-0.3.5.zip`（18 文件，无冗余） |
 | 隐私政策 URL | 就绪 | https://sci-m-wang.github.io/CiteBeat/privacy/ |
 | 128×128 图标 | 就绪 | 已在包内 |
 | 截图 ×3 | 就绪 | `store/screenshot-{1,2,3}-*.png`，1280×800，已对齐 v0.3.x 界面 |
@@ -123,7 +123,12 @@ feature.
 ```
 Fetches the public Google Scholar profile page of the author ID the user
 entered, in order to read the total citation count, h-index, i10-index,
-and the per-paper citation list. No credentials are sent; requests use
+and the per-paper citation list. Requests use credentials: 'include' so the
+browser attaches the user's own existing scholar.google.com cookies, exactly
+as when the user visits the page. Without them Scholar treats the request
+like an anonymous private window and demands human verification. The
+extension cannot read these cookies and never stores or forwards them.
+Requests to Semantic Scholar and to the user's reporting target use
 credentials: 'omit'.
 ```
 

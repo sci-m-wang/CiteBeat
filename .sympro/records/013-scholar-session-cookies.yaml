@@ -1,0 +1,63 @@
+id: record-0013
+timestamp: 2026-11-06T09:48:13Z
+summary: >-
+  v0.3.5 sends Google Scholar requests with the browser's own cookies
+  (credentials 'include') instead of 'omit'. Investigation of repeated
+  verification failures showed the exit network is a datacenter range, and
+  that a blank-profile Chrome is challenged from it while the user's normal
+  browser window is not; the user then confirmed that a private window also
+  demands verification. Cookies are therefore what separates the working
+  browser from the extension, which had always run as if in a private window
+  and could never benefit from a verification the user had already passed.
+  Only Scholar requests change. Semantic Scholar and the reporting target
+  keep 'omit', pinned by tests, so the browser's Google cookies can never be
+  sent to the user's own node or to GitHub. PRIVACY.md, README and the store
+  submission notes previously promised no cookies and no extra identifying
+  data, which would have been false; they now say the browser attaches the
+  existing Scholar cookies, that the extension cannot read them, and that
+  nothing else receives them. The block message now tells the user to complete
+  verification in the browser.
+participation_mode:
+  - implementation
+  - bugfix
+  - documentation
+participation_intensity: moderate
+autonomy_mode: human-directed
+artifacts:
+  - background.js
+  - scripts/test_background.mjs
+  - PRIVACY.md
+  - README.md
+  - store/chrome/SUBMISSION.md
+  - store/edge/SUBMISSION.md
+  - manifest.json
+participants:
+  originators:
+    - wangm
+  reviewers:
+    - wangm
+  stewards:
+    - wangm
+  humans:
+    - wangm
+  agents:
+    - lumen
+provenance:
+  prompt_mode: summary
+  prompt_summary: >-
+    User asked why fetching fails rather than why a failure was recorded as
+    zero, pointed out that their browser opens Scholar fine on the same
+    network, and asked whether a browser request could be imitated; then
+    confirmed that a private window demands verification while the normal
+    window does not.
+validation:
+  review_status: pending
+  validation_mode:
+    - automated_checks
+    - user_observation
+  checks:
+    - node scripts/test_background.mjs (38 of 38; the new Scholar credentials check fails against v0.3.4 and passes now)
+    - user confirmed a private window demands verification and a normal window does not
+  open_items:
+    - not yet verified in a real browser that credentials 'include' from the service worker actually carries the Scholar cookies and avoids the challenge
+    - not yet verified that the page returned to a logged-in owner still parses
